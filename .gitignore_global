@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor swap/backup
+*.swp
+*.swo
+*~
+.netrwhist
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+dist/
+build/
+target/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/

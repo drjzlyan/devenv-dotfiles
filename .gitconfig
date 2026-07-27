@@ -1,0 +1,40 @@
+[init]
+    defaultBranch = main
+
+[push]
+    default = simple
+    autoSetupRemote = true
+
+[pull]
+    rebase = false
+
+[fetch]
+    prune = true
+
+[core]
+    excludesfile = ~/.gitignore_global
+    pager = delta
+    editor = nvim
+    autocrlf = input
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true
+    light = false
+    line-numbers = true
+    side-by-side = false
+
+[merge]
+    conflictstyle = diff3
+
+[diff]
+    colorMoved = default
+
+[color]
+    ui = auto
+
+# Put user name / email in ~/.gitconfig.local
+[include]
+    path = ~/.gitconfig.local
