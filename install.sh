@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bootstrap a fresh macOS machine with the dotfiles toolchain.
-# Safe to run repeatedly.
+# Safe to run repeatedly; all steps are idempotent.
 
 set -euo pipefail
 
@@ -13,6 +13,10 @@ XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.local/cache}"
 
 log() {
   printf '[dotfiles] %s\n' "$*"
+}
+
+warn() {
+  printf '[dotfiles] warning: %s\n' "$*" >&2
 }
 
 source_brew_env() {
@@ -38,13 +42,18 @@ create_xdg_dirs() {
   log "Creating XDG base directories..."
   mkdir -p "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
 
-  # Ensure the current user owns ~/.local and its children
-  chown -R "$USER" "$HOME/.local" 2>/dev/null || true
-  chmod 700 "$HOME/.local" 2>/dev/null || true
+  if [[ -d "$HOME/.local" ]]; then
+    chown -R "$USER" "$HOME/.local" 2>/dev/null || true
+    chmod 700 "$HOME/.local" 2>/dev/null || true
+  fi
 }
 
 install_packages() {
   log "Installing Homebrew bundle..."
+  if [[ ! -f "$DOTFILES_DIR/Brewfile" ]]; then
+    warn "Brewfile not found at $DOTFILES_DIR/Brewfile"
+    return 1
+  fi
   brew bundle --file="$DOTFILES_DIR/Brewfile"
 }
 
@@ -63,7 +72,9 @@ main() {
   install_packages
   install_uv
 
-  log "Bootstrap complete. Run './link.sh' to symlink dotfiles."
+  log "Bootstrap complete."
+  log "Run './link.sh' to symlink dotfiles."
+  log "Run './doctor.sh' to verify the installation."
 }
 
 main "$@"

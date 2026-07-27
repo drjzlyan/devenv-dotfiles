@@ -22,8 +22,16 @@ brew "yq"
 
 # Python toolchain
 brew "uv"
+brew "basedpyright"
+brew "ruff"
 
-# JVMs
+# Java / JVM toolchain
+brew "jdtls"
+brew "lombok"
+brew "google-java-format"
+brew "maven"
+brew "gradle"
+
 # Homebrew uses the Temurin casks for older LTS releases
 cask "temurin@8"
 cask "temurin@11"

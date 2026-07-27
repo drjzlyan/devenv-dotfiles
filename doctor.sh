@@ -55,10 +55,40 @@ for entry in "${symlinks[@]}"; do
   fi
 done
 
+# Optional development tools for the Neovim configuration
+optionals=(
+  jdtls
+  basedpyright
+  ruff
+  google-java-format
+)
+
+for cmd in "${optionals[@]}"; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    echo "[ok] $cmd (optional)"
+  else
+    echo "[missing] $cmd (optional — install with brew if needed)"
+  fi
+done
+
+# JDK sanity check
+if command -v java >/dev/null 2>&1; then
+  echo "[ok] java ($(java -version 2>&1 | head -n 1))"
+else
+  echo "[missing] java"
+  fail=1
+fi
+
+if [[ -n "${JAVA_HOME:-}" && -d "$JAVA_HOME" ]]; then
+  echo "[ok] JAVA_HOME=$JAVA_HOME"
+else
+  echo "[warn] JAVA_HOME is not set or does not point to a directory"
+fi
+
 if [[ $fail -eq 0 ]]; then
-  echo "[dotfiles] All checks passed."
+  echo "[dotfiles] All required checks passed."
   exit 0
 else
-  echo "[dotfiles] Some checks failed."
+  echo "[dotfiles] Some required checks failed."
   exit 1
 fi

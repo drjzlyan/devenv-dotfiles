@@ -11,6 +11,11 @@ link_file() {
   local src="$1"
   local dst="$2"
 
+  if [[ ! -e "$src" ]]; then
+    echo "[link] Source missing: $src"
+    return 1
+  fi
+
   if [[ -L "$dst" ]]; then
     if [[ "$(readlink "$dst")" == "$src" ]]; then
       echo "[link] $dst is already linked"
@@ -26,6 +31,7 @@ link_file() {
     echo "[link] Backed up existing $dst to $backup"
   fi
 
+  mkdir -p "$(dirname "$dst")"
   ln -s "$src" "$dst"
   echo "[link] Linked $dst -> $src"
 }
@@ -36,10 +42,7 @@ main() {
   link_file "$DOTFILES_DIR/.gitconfig" "$HOME/.gitconfig"
   link_file "$DOTFILES_DIR/.gitignore_global" "$HOME/.gitignore_global"
 
-  mkdir -p "$HOME/.config/ghostty"
   link_file "$DOTFILES_DIR/config/ghostty/config" "$HOME/.config/ghostty/config"
-
-  mkdir -p "$HOME/.config/starship"
   link_file "$DOTFILES_DIR/starship.toml" "$HOME/.config/starship/starship.toml"
 
   echo "[link] Done."
