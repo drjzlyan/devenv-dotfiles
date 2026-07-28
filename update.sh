@@ -35,7 +35,10 @@ log "Updating uv..."
 uv self update 2>/dev/null || true
 
 log "Updating mise runtimes..."
-mise install 2>/dev/null || true
+if [[ -f "$REPO_ROOT/mise.toml" ]]; then
+  mise install 2>/dev/null || true
+  mise upgrade 2>/dev/null || true
+fi
 
 log "Updating external tools (for selected languages)..."
 local tool_script="$REPO_ROOT/../nvim-config/scripts/update-tools.sh"

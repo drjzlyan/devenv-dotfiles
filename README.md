@@ -61,23 +61,25 @@ dotfiles/
 └── docs/                 # Documentation
 ```
 
-## Language selection
+## Language and version selection
 
 `install.sh` launches an interactive language selector after the editor config
-is linked. Choose which programming languages to configure:
+is linked. Choose which programming languages to configure **and which runtime
+versions to install** — versions are queried dynamically from `mise ls-remote`:
 
 - **Always available**: JSON, YAML, Bash, Lua, TOML, Markdown
 - **Selectable**: Python, Java, TypeScript, Go, C/C++, Rust
 
 ```bash
-# Change languages at any time (non-destructive, preserves existing settings)
+# Interactive menu — toggle languages, change versions (non-destructive)
 ./scripts/languages.sh          # interactive menu
-./scripts/languages.sh --list   # show current selection
-./scripts/languages.sh --all    # select all + install tools
+./scripts/languages.sh --list   # show current selection with versions
+./scripts/languages.sh --all    # select all (latest stable) + install
 ```
 
-The selection is saved to `~/.local/share/nvim/languages.local` and the
-corresponding external tools are installed automatically. See the
+The selection is saved to `~/.local/share/nvim/languages.local` in `key=value`
+format. `mise.toml` is generated automatically from the selection — no static
+version lists are stored. See the
 [nvim-config languages docs](https://github.com/drjzlyan/nvim-config/blob/main/docs/languages.md)
 for the full list of tools and keymaps per language.
 

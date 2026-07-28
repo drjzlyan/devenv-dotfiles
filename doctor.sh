@@ -5,7 +5,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NVIM_CONFIG_PATH="${NVIM_CONFIG_PATH:-$REPO_ROOT/../nvim-config}"
-TOOLS_LOCK="$NVIM_CONFIG_PATH/scripts/tools.lock"
 
 extract_version() {
   local output="$1"
@@ -35,33 +34,33 @@ check_version() {
 }
 
 check_tools_lock() {
-  if [[ ! -f "$TOOLS_LOCK" ]]; then
-    echo "[warn] tools.lock not found at $TOOLS_LOCK"
-    return 0
-  fi
-  source "$TOOLS_LOCK"
   local mismatch=0
   if has_language "python"; then
-    check_version "basedpyright" "${BASEDPYRIGHT_VERSION:-}" "basedpyright --version" || mismatch=1
-    check_version "ruff" "${RUFF_VERSION:-}" "ruff --version" || mismatch=1
+    check_version "basedpyright" "" "basedpyright --version" || mismatch=1
+    check_version "ruff" "" "ruff --version" || mismatch=1
   fi
   if has_language "java"; then
-    check_version "jdtls" "${JDTLS_VERSION:-}" "jdtls --version" || mismatch=1
+    check_version "jdtls" "" "jdtls --version" || mismatch=1
   fi
   return "$mismatch"
 }
 
 # ---------------------------------------------------------------------------
-# Language selection helpers
+# Language selection helpers (reads key=value format)
 # ---------------------------------------------------------------------------
 
 LANGUAGES_FILE="${LANGUAGES_FILE:-$HOME/.local/share/nvim/languages.local}"
 selected_languages=()
+declare -A selected_versions=()
 if [[ -f "$LANGUAGES_FILE" ]]; then
   while IFS= read -r line; do
     line="${line%%#*}"
     line="$(echo "$line" | xargs)"
-    [[ -n "$line" ]] && selected_languages+=("$line")
+    [[ -z "$line" ]] && continue
+    local_lang="${line%%=*}"
+    local_ver="${line#*=}"
+    selected_languages+=("$local_lang")
+    selected_versions["$local_lang"]="$local_ver"
   done < "$LANGUAGES_FILE"
 fi
 
@@ -84,8 +83,9 @@ check_language_tools() {
   fi
 
   for lang in "${selected_languages[@]}"; do
+    local ver="${selected_versions[$lang]:-?}"
     echo ""
-    echo "--- $lang ---"
+    echo "--- $lang (v$ver) ---"
     case "$lang" in
       python)
         check_cmd "python3" "python3 --version"

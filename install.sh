@@ -71,10 +71,6 @@ install_mise() {
     log "Installing mise..."
     brew install mise
   fi
-  if [[ -f "$REPO_ROOT/mise.toml" ]]; then
-    log "Installing mise runtimes..."
-    mise install
-  fi
 }
 
 install_nvim_config() {
