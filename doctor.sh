@@ -72,18 +72,24 @@ check_language_tools() {
         check_cmd "java" "java -version 2>&1"
         check_cmd "jdtls" "jdtls --help 2>&1 | head -1"
         check_cmd "mvn" "mvn --version"
-        # JDK sanity check (managed by mise)
+        # JDK sanity check (managed by mise) — verify ALL selected versions
         if command -v mise >/dev/null 2>&1; then
-          local java_ver="${selected_versions[java]:-}"
-          if [[ -n "$java_ver" ]]; then
-            local jdk_path
-            jdk_path=$(mise where "java@${java_ver}" 2>/dev/null || true)
-            if [[ -n "$jdk_path" && -d "$jdk_path" ]]; then
-              echo "[ok] JDK ${java_ver} via mise ($jdk_path)"
-            else
-              echo "[missing] JDK ${java_ver} (run: mise install java@${java_ver})"
-              fail=1
-            fi
+          local java_vers="${selected_versions[java]:-}"
+          if [[ -n "$java_vers" ]]; then
+            local jdk_ver
+            IFS=',' read -ra jdk_ver <<< "$java_vers"
+            for v in "${jdk_ver[@]}"; do
+              v=$(echo "$v" | tr -d ' ')
+              [[ -z "$v" ]] && continue
+              local jdk_path
+              jdk_path=$(mise where "java@${v}" 2>/dev/null || true)
+              if [[ -n "$jdk_path" && -d "$jdk_path" ]]; then
+                echo "[ok] JDK ${v} via mise ($jdk_path)"
+              else
+                echo "[missing] JDK ${v} (run: mise install java@${v})"
+                fail=1
+              fi
+            done
           fi
         fi
         ;;
