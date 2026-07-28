@@ -130,10 +130,29 @@ reset_layout() {
   workdir=$(get_opt "$session" "@ide_workdir")
   [[ -z "$workdir" ]] && workdir="$HOME"
 
-  # Check if the dev window exists
+  # If the dev window doesn't exist, recreate it from scratch
   if ! tmux list-windows -t "$session" -F "#{window_name}" 2>/dev/null | grep -q "^dev$"; then
-    tmux display-message "No 'dev' window in session '$session'"
-    return 1
+    tmux display-message "Recreating 'dev' window in session '$session'"
+    tmux new-window -t "$session" -n dev -c "$workdir"
+    tmux send-keys -t "$session:dev.1" "nvim" Enter
+    tmux split-window -h -l 35% -t "$session:dev.1" -c "$workdir"
+    tmux split-window -v -l 40% -t "$session:dev.2" -c "$workdir"
+    tmux select-pane -t "$session:dev.2" -T "agent"
+    tmux select-pane -t "$session:dev.3" -T "build/test"
+
+    local agent_pane
+    agent_pane=$(tmux display-message -p -t "$session:dev.2" "#{pane_id}")
+    set_opt "$session" "@ide_agent_pane" "$agent_pane"
+
+    local current
+    current=$(ensure_current "$session")
+    if [[ "$current" != "none" ]] && command -v "$current" >/dev/null 2>&1; then
+      tmux send-keys -t "$session:dev.2" "$current" Enter
+    fi
+
+    tmux select-pane -t "$session:dev.1"
+    tmux display-message "Layout reset"
+    return 0
   fi
 
   # Get current pane count
