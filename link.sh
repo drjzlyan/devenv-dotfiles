@@ -78,6 +78,7 @@ main() {
   link_file "$DOTFILES_DIR/.gitignore_global" "$HOME/.gitignore_global"
 
   link_file "$DOTFILES_DIR/config/ghostty/config" "$HOME/.config/ghostty/config"
+  link_file "$DOTFILES_DIR/config/lazygit/config.yml" "$HOME/.config/lazygit/config.yml"
   link_file "$DOTFILES_DIR/starship.toml" "$HOME/.config/starship/starship.toml"
 
   if [[ -d "$DOTFILES_DIR/../nvim-config" ]]; then

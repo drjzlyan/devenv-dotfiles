@@ -1,0 +1,6 @@
+os:
+  edit: 'nvim-edit {{filename}} 1'
+  editAtLine: 'nvim-edit {{filename}} {{line}}'
+  # Wait variant used for commit messages / interactive rebase — opens nvim directly
+  editAtLineAndWait: 'nvim +{{line}} {{filename}}'
+  openDirInEditor: 'nvim-edit {{dir}} 1'

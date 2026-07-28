@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Open a file in the nvim pane (dev.1) of the current tmux session.
+# Falls back to opening nvim directly if no tmux/nvim pane is found.
+set -euo pipefail
+
+FILE="${1:?Usage: nvim-edit <file> [line]}"
+LINE="${2:-1}"
+
+SESSION=$(tmux display-message -p "#{session_name}" 2>/dev/null || true)
+
+if [[ -z "$SESSION" ]]; then
+  exec nvim "+${LINE}" "$FILE"
+fi
+
+# Prefer dev.1 (always nvim in the IDE layout), fall back to any nvim pane
+NVIM_TARGET=""
+if tmux list-windows -t "$SESSION" -F "#{window_name}" 2>/dev/null | grep -q "^dev$"; then
+  PANE_CMD=$(tmux display-message -p -t "$SESSION:dev.1" "#{pane_current_command}" 2>/dev/null || true)
+  [[ "$PANE_CMD" == "nvim" ]] && NVIM_TARGET="$SESSION:dev.1"
+fi
+
+if [[ -z "$NVIM_TARGET" ]]; then
+  NVIM_TARGET=$(
+    tmux list-panes -s -t "$SESSION" \
+      -F "#{session_name}:#{window_name}.#{pane_index} #{pane_current_command}" 2>/dev/null \
+    | awk '/\bnvim\b/{print $1; exit}'
+  )
+fi
+
+if [[ -z "$NVIM_TARGET" ]]; then
+  exec nvim "+${LINE}" "$FILE"
+fi
+
+# Escape filename for vim's :e command (spaces, #, %)
+VIM_FILE=$(printf '%s' "$FILE" | sed 's/ /\\ /g; s/#/\\#/g; s/%/\\%/g')
+
+tmux select-window -t "$SESSION:dev" 2>/dev/null || true
+tmux select-pane -t "$NVIM_TARGET" 2>/dev/null || true
+tmux send-keys -t "$NVIM_TARGET" Escape 2>/dev/null || true
+sleep 0.05
+tmux send-keys -t "$NVIM_TARGET" ":e +${LINE} ${VIM_FILE}" Enter
