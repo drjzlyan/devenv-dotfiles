@@ -57,9 +57,29 @@ dotfiles/
 ├── .gitignore_global     # Global ignore patterns
 ├── starship.toml         # Starship prompt
 ├── config/ghostty/config # Ghostty terminal config
-├── scripts/              # Utility scripts
+├── scripts/              # Utility scripts (languages.sh, dev.sh, backup.sh, …)
 └── docs/                 # Documentation
 ```
+
+## Language selection
+
+`install.sh` launches an interactive language selector after the editor config
+is linked. Choose which programming languages to configure:
+
+- **Always available**: JSON, YAML, Bash, Lua, TOML, Markdown
+- **Selectable**: Python, Java, TypeScript, Go, C/C++, Rust
+
+```bash
+# Change languages at any time (non-destructive, preserves existing settings)
+./scripts/languages.sh          # interactive menu
+./scripts/languages.sh --list   # show current selection
+./scripts/languages.sh --all    # select all + install tools
+```
+
+The selection is saved to `~/.local/share/nvim/languages.local` and the
+corresponding external tools are installed automatically. See the
+[nvim-config languages docs](https://github.com/drjzlyan/nvim-config/blob/main/docs/languages.md)
+for the full list of tools and keymaps per language.
 
 ## Philosophy
 

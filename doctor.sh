@@ -41,10 +41,97 @@ check_tools_lock() {
   fi
   source "$TOOLS_LOCK"
   local mismatch=0
-  check_version "basedpyright" "${BASEDPYRIGHT_VERSION:-}" "basedpyright --version" || mismatch=1
-  check_version "ruff" "${RUFF_VERSION:-}" "ruff --version" || mismatch=1
-  check_version "jdtls" "${JDTLS_VERSION:-}" "jdtls --version" || mismatch=1
+  if has_language "python"; then
+    check_version "basedpyright" "${BASEDPYRIGHT_VERSION:-}" "basedpyright --version" || mismatch=1
+    check_version "ruff" "${RUFF_VERSION:-}" "ruff --version" || mismatch=1
+  fi
+  if has_language "java"; then
+    check_version "jdtls" "${JDTLS_VERSION:-}" "jdtls --version" || mismatch=1
+  fi
   return "$mismatch"
+}
+
+# ---------------------------------------------------------------------------
+# Language selection helpers
+# ---------------------------------------------------------------------------
+
+LANGUAGES_FILE="${LANGUAGES_FILE:-$HOME/.local/share/nvim/languages.local}"
+selected_languages=()
+if [[ -f "$LANGUAGES_FILE" ]]; then
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="$(echo "$line" | xargs)"
+    [[ -n "$line" ]] && selected_languages+=("$line")
+  done < "$LANGUAGES_FILE"
+fi
+
+has_language() {
+  local lang="$1"
+  for s in "${selected_languages[@]:-}"; do
+    [[ "$s" == "$lang" ]] && return 0
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Check language-specific tools
+# ---------------------------------------------------------------------------
+
+check_language_tools() {
+  if [[ ${#selected_languages[@]} -eq 0 ]]; then
+    echo "[info] No languages selected. Run: ~/Development/dotfiles/scripts/languages.sh"
+    return 0
+  fi
+
+  for lang in "${selected_languages[@]}"; do
+    echo ""
+    echo "--- $lang ---"
+    case "$lang" in
+      python)
+        check_cmd "python3" "python3 --version"
+        check_cmd "basedpyright" "basedpyright --version"
+        check_cmd "ruff" "ruff --version"
+        ;;
+      java)
+        check_cmd "java" "java -version 2>&1"
+        check_cmd "jdtls" "jdtls --version"
+        check_cmd "mvn" "mvn --version"
+        ;;
+      typescript)
+        check_cmd "node" "node --version"
+        check_cmd "typescript-language-server" "typescript-language-server --version"
+        check_cmd "prettier" "prettier --version"
+        ;;
+      go)
+        check_cmd "go" "go version"
+        check_cmd "gopls" "gopls version"
+        ;;
+      cpp)
+        check_cmd "clangd" "clangd --version"
+        check_cmd "clang-format" "clang-format --version"
+        ;;
+      rust)
+        check_cmd "rustc" "rustc --version"
+        check_cmd "cargo" "cargo --version"
+        check_cmd "rust-analyzer" "rust-analyzer --version"
+        ;;
+      *)
+        echo "[warn] Unknown language: $lang"
+        ;;
+    esac
+  done
+}
+
+check_cmd() {
+  local name="$1"
+  local cmd="$2"
+  if command -v "$name" >/dev/null 2>&1; then
+    local ver
+    ver=$($cmd 2>&1 | head -n 1)
+    echo "[ok] $name ($ver)"
+  else
+    echo "[missing] $name"
+  fi
 }
 
 commands=(
@@ -108,20 +195,9 @@ for entry in "${symlinks[@]}"; do
 done
 
 # Optional development tools for the Neovim configuration
-optionals=(
-  jdtls
-  basedpyright
-  ruff
-  google-java-format
-)
+# (checked based on language selection above)
 
-for cmd in "${optionals[@]}"; do
-  if command -v "$cmd" >/dev/null 2>&1; then
-    echo "[ok] $cmd (optional)"
-  else
-    echo "[missing] $cmd (optional — install with brew if needed)"
-  fi
-done
+check_language_tools
 
 check_tools_lock || fail=1
 

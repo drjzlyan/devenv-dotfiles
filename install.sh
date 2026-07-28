@@ -106,6 +106,22 @@ install_external_tools() {
   fi
 }
 
+select_languages() {
+  local lang_script="$REPO_ROOT/scripts/languages.sh"
+  if [[ -x "$lang_script" ]]; then
+    local langs_file="$HOME/.local/share/nvim/languages.local"
+    if [[ -f "$langs_file" ]]; then
+      log "Language selection already exists; skipping interactive menu."
+      log "  To change: $lang_script"
+      return 0
+    fi
+    log "Launching language selection..."
+    "$lang_script"
+  else
+    warn "Language selector not found at $lang_script"
+  fi
+}
+
 main() {
   install_homebrew
   create_xdg_dirs
@@ -113,11 +129,13 @@ main() {
   install_uv
   install_mise
   install_nvim_config
+  select_languages
   install_external_tools
   "$REPO_ROOT/link.sh"
   "$REPO_ROOT/doctor.sh"
 
   log "Bootstrap complete."
+  log "  To add more languages later: ~/Development/dotfiles/scripts/languages.sh"
 }
 
 main "$@"
