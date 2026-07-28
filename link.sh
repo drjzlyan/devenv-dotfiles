@@ -85,6 +85,7 @@ main() {
   fi
 
   link_internal "../scripts/dev.sh" "bin/dev"
+  link_internal "../scripts/ide-agent.sh" "bin/ide-agent"
 
   echo "[link] Done."
 }

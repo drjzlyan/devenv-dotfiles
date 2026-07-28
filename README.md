@@ -83,6 +83,37 @@ version lists are stored. See the
 [nvim-config languages docs](https://github.com/drjzlyan/nvim-config/blob/main/docs/languages.md)
 for the full list of tools and keymaps per language.
 
+## Dev session and coding agents
+
+`scripts/dev.sh` launches a tmux session with panes for Neovim, an AI coding
+agent, and a build/test shell. Agents are auto-detected from `$PATH`:
+
+```bash
+dev                     # auto-detect agents, prompt if multiple
+dev -a claude           # use a specific agent
+dev -a none             # no agent, just a shell
+dev -k                  # kill existing session and recreate
+```
+
+Detected agents: crush, claude, codex, gemini, aider, copilot.
+
+In-session keybindings (tmux prefix is `Ctrl-a`):
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-a A` | Switch agent (interactive prompt) |
+| `Ctrl-a N` | Cycle to next agent |
+| `Ctrl-a D` | Reset layout to default (preserves nvim) |
+
+`scripts/ide-agent.sh` provides the same operations from the command line:
+
+```bash
+ide-agent status     # show current agent and available agents
+ide-agent switch     # interactive switch (from within tmux)
+ide-agent next       # cycle to next agent
+ide-agent reset      # reset layout
+```
+
 ## Philosophy
 
 - **Idempotent**: running scripts repeatedly is safe.
