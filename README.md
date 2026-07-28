@@ -34,6 +34,27 @@ cd dotfiles
 
 This updates Homebrew, upgrades installed packages, and re-applies the Brewfile.
 
+## Rebuild
+
+After pulling updates (or when you want to re-apply the full setup without
+losing your existing configuration):
+
+```bash
+./rebuild.sh              # pull, relink, regenerate, reinstall, verify
+./rebuild.sh --no-pull    # use local changes without pulling
+./rebuild.sh --dry-run    # preview what would happen
+```
+
+Rebuild preserves your language selection (`languages.local`), Git identity
+(`~/.gitconfig.local`), nvim sessions/plugins, and mise runtimes. It:
+1. Pulls latest changes for both repos
+2. Backs up any non-symlinked config files
+3. Re-links all dotfiles (idempotent)
+4. Regenerates `mise.toml` from existing language selection
+5. Reinstalls language tools (idempotent)
+6. Syncs nvim plugins (`:Lazy! sync`)
+7. Runs a health check
+
 ## Health check
 
 ```bash
@@ -49,6 +70,7 @@ dotfiles/
 ├── Brewfile              # Homebrew packages and casks
 ├── install.sh            # First-time machine bootstrap
 ├── update.sh             # Maintenance / upgrades
+├── rebuild.sh            # Re-apply setup after pulling updates
 ├── link.sh               # Symlink dotfiles into $HOME
 ├── doctor.sh             # Health check
 ├── .zshrc                # Shell configuration
