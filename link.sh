@@ -42,6 +42,35 @@ link_file() {
   echo "[link] Linked $dst -> $src"
 }
 
+# Create or repair a repo-internal symlink with a relative target so it
+# stays portable across machines. Not recorded in the manifest because
+# unlink.sh only reverses $HOME links, not repo-internal ones.
+link_internal() {
+  local src="$1"   # relative path from the link's directory, e.g. "../scripts/dev.sh"
+  local dst="$2"   # path relative to REPO_ROOT, e.g. "bin/dev"
+
+  local dst_abs="$REPO_ROOT/$dst"
+  if [[ -L "$dst_abs" && "$(readlink "$dst_abs")" == "$src" ]]; then
+    echo "[link] $dst is already linked"
+    return 0
+  fi
+
+  if [[ -e "$dst_abs" && ! -L "$dst_abs" ]]; then
+    local backup
+    backup="$dst_abs.backup.$(date +%Y%m%d%H%M%S)"
+    mv "$dst_abs" "$backup"
+    echo "[link] Backed up existing $dst to $backup"
+  fi
+
+  if [[ -L "$dst_abs" ]]; then
+    rm "$dst_abs"
+  fi
+
+  mkdir -p "$(dirname "$dst_abs")"
+  ln -s "$src" "$dst_abs"
+  echo "[link] Linked $dst -> $src"
+}
+
 main() {
   link_file "$DOTFILES_DIR/.zshrc" "$HOME/.zshrc"
   link_file "$DOTFILES_DIR/.tmux.conf" "$HOME/.tmux.conf"
@@ -54,6 +83,8 @@ main() {
   if [[ -d "$DOTFILES_DIR/../nvim-config" ]]; then
     link_file "$DOTFILES_DIR/../nvim-config" "$HOME/.config/nvim"
   fi
+
+  link_internal "../scripts/dev.sh" "bin/dev"
 
   echo "[link] Done."
 }
