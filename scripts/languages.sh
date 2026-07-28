@@ -47,12 +47,12 @@ LANGUAGES_FILE="$NVIM_DATA_DIR/languages.local"
 #                     "none"  (no version list — system toolchain)
 #   keep_count      — how many distinct versions to offer (10)
 ALL_LANGUAGES=(
-  "python:Python:python:3.14:minor:10"
-  "java:Java:java:25:major:10"
-  "typescript:TypeScript/JS:node:24:major:10"
-  "go:Go:go:1.26:minor:10"
+  "python:Python:python:3.14:minor:0"
+  "java:Java:java:25:major:0"
+  "typescript:TypeScript/JS:node:24:major:0"
+  "go:Go:go:1.26:minor:0"
   "cpp:C/C++:system:system:none:0"
-  "rust:Rust:rust:1.97:minor:10"
+  "rust:Rust:rust:1.97:minor:0"
 )
 
 mkdir -p "$NVIM_DATA_DIR"
@@ -157,22 +157,47 @@ list_versions() {
     return 0
   fi
 
-  local versions
+  # Java: scan all distributions, pick best available spec per major (8-latest).
+  # Priority per major: plain number (17+) > temurin > corretto > zulu.
   if [[ "$tool" == "java" ]]; then
-    # Java: only plain numeric versions (skip distro-prefixed like zulu-, temurin-)
-    versions=$(mise ls-remote "$tool" 2>/dev/null | grep -E '^[0-9]' | grep -vE '(alpha|beta|rc|dev|pre|ea)' || true)
-  else
-    versions=$(mise ls-remote "$tool" 2>/dev/null | grep -E '^[0-9]' | grep -vE '(alpha|beta|rc|dev|pre|nightly|a[0-9]|b[0-9])' || true)
+    local all_remote
+    all_remote=$(mise ls-remote java 2>/dev/null | grep -vE '(jre|alpha|beta|rc|dev|pre|ea)' || true)
+
+    if [[ -z "$all_remote" ]]; then
+      echo "$fallback"
+      return 0
+    fi
+
+    local max_major
+    max_major=$(echo "$all_remote" | grep -oE '^[0-9]+' | sort -n | tail -1)
+    max_major="${max_major:-26}"
+
+    local major
+    for major in $(seq 8 "$max_major"); do
+      if echo "$all_remote" | grep -qE "^${major}\."; then
+        echo "$major"
+      elif echo "$all_remote" | grep -qE "^temurin-${major}([^0-9]|$)"; then
+        echo "temurin-${major}"
+      elif echo "$all_remote" | grep -qE "^corretto-${major}([^0-9]|$)"; then
+        echo "corretto-${major}"
+      elif echo "$all_remote" | grep -qE "^zulu-${major}([^0-9]|$)"; then
+        echo "zulu-${major}"
+      fi
+    done
+    return 0
   fi
+
+  local versions
+  versions=$(mise ls-remote "$tool" 2>/dev/null | grep -E '^[0-9]' | grep -vE '(alpha|beta|rc|dev|pre|nightly|a[0-9]|b[0-9])' || true)
 
   if [[ -z "$versions" ]]; then
     echo "$fallback"
     return 0
   fi
 
-  # Deduplicate by the dedup key — keep the first occurrence (latest patch
-  # for that key, since ls-remote is sorted ascending and the last entry for
-  # each key is the newest).
+  # Deduplicate by the dedup key — keep the first occurrence per key
+  # (ls-remote is ascending so first = oldest patch; mise resolves latest patch
+  # automatically when given a major or major.minor specifier).
   local seen=""
   local result=()
   while IFS= read -r v; do
@@ -185,9 +210,9 @@ list_versions() {
     fi
   done <<< "$versions"
 
-  # Print the last N keys (most recent)
+  # Print versions ascending; keep=0 means no limit.
   local start=0
-  if [[ ${#result[@]} -gt "$keep" ]]; then
+  if [[ "$keep" -gt 0 ]] && [[ ${#result[@]} -gt "$keep" ]]; then
     start=$(( ${#result[@]} - keep ))
   fi
   for (( i=start; i<${#result[@]}; i++ )); do
@@ -219,6 +244,8 @@ menu_row() {
 # ---------------------------------------------------------------------------
 
 # Prompts the user to pick one or more versions.
+# Uses fzf when available (type to search, Tab to multi-select).
+# Falls back to a numbered list with /pattern inline filtering.
 # Arguments: tool display fallback [current_versions] [dedup_mode] [keep]
 pick_version() {
   local tool="$1"
@@ -226,14 +253,13 @@ pick_version() {
   local fallback="$3"
   local current_versions="${4:-}"
   local dedup_mode="${5:-minor}"
-  local keep="${6:-10}"
+  local keep="${6:-0}"
 
   local versions=()
   while IFS= read -r v; do
     versions+=("$v")
   done < <(list_versions "$tool" "$fallback" "$dedup_mode" "$keep")
 
-  # Parse current selections into an associative-like lookup
   local current_list=()
   IFS=',' read -ra current_list <<< "$current_versions"
 
@@ -241,62 +267,107 @@ pick_version() {
   [[ -n "$current_versions" ]] && default="$current_versions"
 
   echo "" >&2
-  echo "  ${display} - available versions (via mise):" >&2
-  echo "" >&2
+
   if [[ ${#versions[@]} -eq 0 ]]; then
-    echo "    (mise returned no versions; using ${default})" >&2
-  fi
-
-  # Show versions with mark for currently selected
-  local i=1
-  for v in "${versions[@]}"; do
-    local mark=" "
-    for cv in "${current_list[@]}"; do
-      if [[ "$v" == "$cv" ]]; then
-        mark="*"
-        break
-      fi
-    done
-    printf '  %s %d. %-10s\n' "$mark" "$i" "$v" >&2
-    i=$((i + 1))
-  done
-
-  echo "" >&2
-  echo "  Pick: number, comma-list (1,3,5), exact version, or Enter to keep." >&2
-  echo "  Current: ${default}" >&2
-  read -rp "  > " choice
-
-  if [[ -z "$choice" ]]; then
+    echo "  ${display} — no versions found; using ${default}" >&2
     echo "$default"
     return
   fi
 
-  # Comma-separated numbers → build version list
-  if [[ "$choice" =~ ^[0-9,]+$ ]] && [[ "$choice" == *,* ]]; then
-    local result=""
-    IFS=',' read -ra nums <<< "$choice"
-    for num in "${nums[@]}"; do
-      num=$(echo "$num" | tr -d ' ')
-      if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#versions[@]} ]]; then
-        local v="${versions[$((num - 1))]}"
-        [[ -n "$result" ]] && result+=","
-        result+="$v"
-      fi
-    done
-    if [[ -n "$result" ]]; then
-      echo "$result"
+  # ── fzf path: fuzzy search + Tab multi-select ─────────────────────────────
+  if command -v fzf >/dev/null 2>&1; then
+    local selected
+    selected=$(printf '%s\n' "${versions[@]}" | fzf \
+      --multi \
+      --prompt="  ${display} > " \
+      --header="Type to search  Tab=select/deselect  Enter=confirm  ESC=keep (${default})" \
+      --reverse \
+      --height=60% \
+      --min-height=12) || true
+
+    if [[ -z "$selected" ]]; then
+      echo "$default"
       return
     fi
-  fi
 
-  # Single number
-  if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#versions[@]} ]]; then
-    echo "${versions[$((choice - 1))]}"
+    local result
+    result=$(printf '%s' "$selected" | tr '\n' ',' | sed 's/,$//')
+    echo "$result"
     return
   fi
 
-  # Exact version string (may be comma-separated custom versions)
-  echo "$choice"
+  # ── Fallback: numbered list with /filter support ───────────────────────────
+  local filter=""
+  while true; do
+    local filtered=()
+    for v in "${versions[@]}"; do
+      [[ -z "$filter" || "$v" == *"$filter"* ]] && filtered+=("$v")
+    done
+
+    echo "" >&2
+    echo "  ${display} — available versions (via mise):" >&2
+    [[ -n "$filter" ]] && printf '  Filter: /%s\n' "$filter" >&2
+    echo "" >&2
+
+    local i=1
+    for v in "${filtered[@]}"; do
+      local mark=" "
+      for cv in "${current_list[@]}"; do
+        [[ "$v" == "$cv" ]] && mark="*" && break
+      done
+      printf '  %s %3d. %s\n' "$mark" "$i" "$v" >&2
+      i=$((i + 1))
+    done
+
+    echo "" >&2
+    if [[ ${#versions[@]} -gt 15 ]]; then
+      echo "  Pick: number(s), /text to filter, exact version, or Enter to keep." >&2
+    else
+      echo "  Pick: number, comma-list (1,3,5), exact version, or Enter to keep." >&2
+    fi
+    echo "  Current: ${default}" >&2
+    read -rp "  > " choice
+
+    # /filter command — redisplay filtered list
+    if [[ "$choice" == /* ]]; then
+      filter="${choice:1}"
+      continue
+    fi
+
+    filter=""
+
+    if [[ -z "$choice" ]]; then
+      echo "$default"
+      return
+    fi
+
+    # Comma-separated numbers
+    if [[ "$choice" =~ ^[0-9,\ ]+$ ]] && [[ "$choice" == *,* ]]; then
+      local result=""
+      IFS=',' read -ra nums <<< "$choice"
+      for num in "${nums[@]}"; do
+        num="${num// /}"
+        if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#filtered[@]} ]]; then
+          [[ -n "$result" ]] && result+=","
+          result+="${filtered[$((num - 1))]}"
+        fi
+      done
+      if [[ -n "$result" ]]; then
+        echo "$result"
+        return
+      fi
+    fi
+
+    # Single number
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#filtered[@]} ]]; then
+      echo "${filtered[$((choice - 1))]}"
+      return
+    fi
+
+    # Exact version string (or comma-separated custom versions)
+    echo "$choice"
+    return
+  done
 }
 
 # ---------------------------------------------------------------------------
@@ -442,6 +513,61 @@ interactive() {
 }
 
 # ---------------------------------------------------------------------------
+# First-time guided setup: walk through every language sequentially
+# ---------------------------------------------------------------------------
+
+setup_wizard() {
+  echo ""
+  echo "  ┌────────────────────────────────────────────────────────────┐"
+  echo "  │  Language & Version Setup                                  │"
+  echo "  │  Configure which languages and versions to install.        │"
+  echo "  │  Press Enter to accept the default, 'n' to skip.          │"
+  echo "  └────────────────────────────────────────────────────────────┘"
+
+  local entries=()
+  local i=1
+
+  for entry in "${ALL_LANGUAGES[@]}"; do
+    parse_entry "$entry"
+
+    local current
+    current=$(get_language_version "$PE_LANG") || true
+
+    echo ""
+    printf '  ── %d. %s ' "$i" "$PE_DISPLAY"
+    printf '%.0s─' {1..40} 2>/dev/null || true
+    echo ""
+
+    if [[ "$PE_MISE_TOOL" == "system" || "$PE_MISE_TOOL" == "none" ]]; then
+      echo "     Uses system toolchain — no version management."
+      [[ -n "$current" ]] && echo "     Current: ${current}"
+      read -rp "     Include ${PE_DISPLAY}? [Y/n]: " yn
+      if [[ -z "$yn" || "$yn" =~ ^[Yy]$ ]]; then
+        entries+=("${PE_LANG}=${PE_FALLBACK}")
+      fi
+    else
+      [[ -n "$current" ]] && echo "     Current: ${current}"
+      read -rp "     Include ${PE_DISPLAY}? [Y/n]: " yn
+      if [[ -z "$yn" || "$yn" =~ ^[Yy]$ ]]; then
+        local version
+        version=$(pick_version "$PE_MISE_TOOL" "$PE_DISPLAY" "$PE_FALLBACK" "$current" "$PE_DEDUP" "$PE_KEEP")
+        entries+=("${PE_LANG}=${version}")
+      fi
+    fi
+
+    i=$((i + 1))
+  done
+
+  echo ""
+  if [[ ${#entries[@]} -gt 0 ]]; then
+    write_selection "${entries[@]}"
+  else
+    log "No languages selected."
+    write_selection ""
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Generate mise.toml from the selection
 # ---------------------------------------------------------------------------
 
@@ -505,10 +631,9 @@ generate_mise_toml() {
   {
     echo ""
     echo "[env]"
-    # JAVA_HOME: use mise's built-in tool path resolver.  {{ tools.java.path }}
-    # resolves to the primary (first) java version in [tools] above.
+    # JAVA_HOME: exec resolves the primary (first) java version at env evaluation time.
     if [[ "$has_java" == true ]]; then
-      echo "JAVA_HOME = { value = \"{{ tools.java.path }}\", tools = true }"
+      echo "JAVA_HOME = { value = \"{{ exec(command='mise where java') }}\", tools = true }"
     fi
     if [[ "$has_go" == true ]]; then
       echo "GOPATH = \"{{ env.HOME }}/.local/share/go\""
@@ -576,10 +701,22 @@ main() {
       install_tools
       return 0
       ;;
+    --setup)
+      setup_wizard
+      generate_mise_toml
+      install_tools
+      log "Done. Restart Neovim and your shell for changes to take effect."
+      if [[ -f "$LANGUAGES_FILE" ]] && grep -qE '^[a-z]+=' "$LANGUAGES_FILE" 2>/dev/null; then
+        log "  Selected:"
+        grep -E '^[a-z]+=' "$LANGUAGES_FILE" | sed 's/^/    /'
+      fi
+      return 0
+      ;;
     --help|-h)
-      echo "Usage: languages.sh [--list|--all|--regenerate|--help]"
+      echo "Usage: languages.sh [--setup|--list|--all|--regenerate|--help]"
       echo ""
-      echo "  (no args)     Interactive language + version selection menu"
+      echo "  (no args)     Interactive menu to add/remove individual languages"
+      echo "  --setup      Guided wizard: walks through every language in order"
       echo "  --list       Print currently selected languages and versions"
       echo "  --all        Select all languages (latest stable) and install"
       echo "  --regenerate Regenerate mise.toml from existing selection (no menu)"

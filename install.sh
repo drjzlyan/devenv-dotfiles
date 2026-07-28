@@ -121,7 +121,7 @@ select_languages() {
     return 0
   fi
   log "Launching language & version selection..."
-  "$lang_script"
+  "$lang_script" --setup
 }
 
 sync_nvim_plugins() {
