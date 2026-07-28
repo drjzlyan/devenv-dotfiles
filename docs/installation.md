@@ -3,8 +3,8 @@
 ## 1. Clone the repositories
 
 ```bash
-git clone https://github.com/example/dotfiles.git
-git clone https://github.com/example/nvim-config.git
+git clone https://github.com/drjzlyan/devenv-dotfiles.git
+git clone https://github.com/drjzlyan/nvim-config.git
 ```
 
 ## 2. Bootstrap the machine

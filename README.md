@@ -7,7 +7,7 @@ Machine bootstrap for a terminal-first macOS development environment.
 This repository turns a fresh macOS machine into a productive development box.
 It installs package managers, tools, fonts, JVMs, and symlinks configuration
 files. It deliberately contains no editor-specific configuration — that lives
-in [`nvim-config`](https://github.com/example/nvim-config).
+in [`nvim-config`](https://github.com/drjzlyan/nvim-config).
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ in [`nvim-config`](https://github.com/example/nvim-config).
 ## Installation
 
 ```bash
-git clone https://github.com/example/dotfiles.git
+git clone https://github.com/drjzlyan/devenv-dotfiles.git
 cd dotfiles
 ./install.sh
 ./link.sh
