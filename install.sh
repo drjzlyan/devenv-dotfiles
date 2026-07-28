@@ -7,7 +7,8 @@
 #
 # Usage:
 #   ./install.sh           # full bootstrap
-#   ./install.sh --no-clone # skip cloning nvim-config (assume already present)
+#   ./install.sh --no-clone   # skip cloning nvim-config (assume already present)
+#   ./install.sh --reselect   # re-run language selection even if already configured
 
 set -euo pipefail
 
@@ -21,10 +22,12 @@ XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.local/cache}"
 
 CLONE_NVIM=1
+RESELECT=0
 
 for arg in "$@"; do
   case "$arg" in
     --no-clone) CLONE_NVIM=0 ;;
+    --reselect) RESELECT=1 ;;
     *) echo "Unknown option: $arg"; exit 1 ;;
   esac
 done
@@ -106,18 +109,19 @@ clone_nvim_config() {
 
 select_languages() {
   local lang_script="$REPO_ROOT/scripts/languages.sh"
-  if [[ -x "$lang_script" ]]; then
-    local langs_file="$HOME/.local/share/nvim/languages.local"
-    if [[ -f "$langs_file" ]]; then
-      log "Language selection already exists; skipping interactive menu."
-      log "  To change: $lang_script"
-      return 0
-    fi
-    log "Launching language & version selection..."
-    "$lang_script"
-  else
+  if [[ ! -x "$lang_script" ]]; then
     warn "Language selector not found at $lang_script"
+    return 0
   fi
+  local langs_file="$HOME/.local/share/nvim/languages.local"
+  if [[ -f "$langs_file" && "$RESELECT" == 0 ]]; then
+    log "Language selection already exists (use --reselect to change)."
+    log "  Current: $(grep -c '=' "$langs_file" 2>/dev/null || echo 0) languages selected"
+    log "  To change: $lang_script"
+    return 0
+  fi
+  log "Launching language & version selection..."
+  "$lang_script"
 }
 
 sync_nvim_plugins() {
