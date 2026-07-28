@@ -6,10 +6,16 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTFILES_DIR="$REPO_ROOT"
+MANIFEST_DIR="$HOME/.local/share/dotfiles"
+MANIFEST="$MANIFEST_DIR/manifest"
+
+mkdir -p "$MANIFEST_DIR"
+: > "$MANIFEST"
 
 link_file() {
   local src="$1"
   local dst="$2"
+  local backup_path=""
 
   if [[ ! -e "$src" ]]; then
     echo "[link] Source missing: $src"
@@ -25,14 +31,14 @@ link_file() {
   fi
 
   if [[ -e "$dst" ]]; then
-    local backup
-    backup="$dst.backup.$(date +%Y%m%d%H%M%S)"
-    mv "$dst" "$backup"
-    echo "[link] Backed up existing $dst to $backup"
+    backup_path="$dst.backup.$(date +%Y%m%d%H%M%S)"
+    mv "$dst" "$backup_path"
+    echo "[link] Backed up existing $dst to $backup_path"
   fi
 
   mkdir -p "$(dirname "$dst")"
   ln -s "$src" "$dst"
+  echo "$dst|$backup_path" >> "$MANIFEST"
   echo "[link] Linked $dst -> $src"
 }
 
@@ -44,6 +50,10 @@ main() {
 
   link_file "$DOTFILES_DIR/config/ghostty/config" "$HOME/.config/ghostty/config"
   link_file "$DOTFILES_DIR/starship.toml" "$HOME/.config/starship/starship.toml"
+
+  if [[ -d "$DOTFILES_DIR/../nvim-config" ]]; then
+    link_file "$DOTFILES_DIR/../nvim-config" "$HOME/.config/nvim"
+  fi
 
   echo "[link] Done."
 }

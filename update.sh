@@ -34,4 +34,21 @@ brew cleanup || true
 log "Updating uv..."
 uv self update 2>/dev/null || true
 
+log "Updating mise runtimes..."
+mise install 2>/dev/null || true
+
+log "Updating editor plugins..."
+if command -v nvim >/dev/null 2>&1; then
+  nvim --headless "+Lazy! sync" +qa 2>/dev/null || true
+fi
+
+log "Updating external tools..."
+local tool_script="$REPO_ROOT/../nvim-config/scripts/update-tools.sh"
+if [[ -x "$tool_script" ]]; then
+  "$tool_script" 2>/dev/null || true
+fi
+
+log "Running health check..."
+"$REPO_ROOT/doctor.sh" || true
+
 log "Update complete."

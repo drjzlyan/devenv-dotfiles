@@ -66,15 +66,58 @@ install_uv() {
   fi
 }
 
+install_mise() {
+  if ! command -v mise >/dev/null 2>&1; then
+    log "Installing mise..."
+    brew install mise
+  fi
+  if [[ -f "$REPO_ROOT/mise.toml" ]]; then
+    log "Installing mise runtimes..."
+    mise install
+  fi
+}
+
+install_nvim_config() {
+  local nvim_config_path="${NVIM_CONFIG_PATH:-$REPO_ROOT/../nvim-config}"
+  if [[ ! -d "$nvim_config_path" ]]; then
+    warn "nvim-config not found at $nvim_config_path; skipping editor config link"
+    return 0
+  fi
+  local target="$HOME/.config/nvim"
+  if [[ -e "$target" && ! -L "$target" ]]; then
+    local backup="$target.bak.$(date +%s)"
+    log "Backing up existing $target to $backup"
+    mv "$target" "$backup"
+  fi
+  if [[ -L "$target" ]]; then
+    rm "$target"
+  fi
+  ln -s "$nvim_config_path" "$target"
+  log "Linked nvim-config -> $target"
+}
+
+install_external_tools() {
+  local tool_script="${NVIM_CONFIG_PATH:-$REPO_ROOT/../nvim-config}/scripts/install-tools.sh"
+  if [[ -x "$tool_script" ]]; then
+    log "Running external tool installer..."
+    "$tool_script"
+  else
+    warn "External tool installer not found at $tool_script"
+  fi
+}
+
 main() {
   install_homebrew
   create_xdg_dirs
   install_packages
   install_uv
+  install_mise
+  install_nvim_config
+  install_external_tools
+  "$REPO_ROOT/link.sh"
+  "$REPO_ROOT/doctor.sh"
 
   log "Bootstrap complete."
-  log "Run './link.sh' to symlink dotfiles."
-  log "Run './doctor.sh' to verify the installation."
 }
 
 main "$@"

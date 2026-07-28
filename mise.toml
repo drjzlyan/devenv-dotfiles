@@ -1,0 +1,10 @@
+[tools]
+java = ["17", "11", "8"]
+python = "3.12"
+node = "20"
+
+[env]
+JAVA_HOME = "{{ ~/.local/share/mise/installs/java/17 }}"
+
+[settings]
+experimental = true

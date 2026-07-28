@@ -12,7 +12,12 @@ export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.local/cache}"
 
 # User-local binaries
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/Development/dotfiles/bin:$HOME/.local/bin:$HOME/.local/share/ide-tools/bin:$PATH"
+
+# mise
+if command -v mise >/dev/null 2>&1; then
+  eval "$(mise activate zsh)"
+fi
 
 # Default programs
 export EDITOR="nvim"
