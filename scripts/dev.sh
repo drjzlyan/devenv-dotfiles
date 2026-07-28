@@ -24,27 +24,23 @@ set -euo pipefail
 #   dev -a claude           # use a specific agent
 #   dev -a none             # skip agent, open a shell instead
 #   dev -k                  # kill existing session if present
+#   dev -q                  # quit (kill) the session cleanly
 #
-# Agent auto-detection:
-#   If -a is not specified, dev scans PATH for known coding agents
-#   (crush, claude, codex, gemini, aider, copilot). If multiple are
-#   found, an interactive menu is shown. If one is found, it is used
-#   automatically. If none are found, a shell opens in the agent pane.
-#   If the user cancels the menu, a shell opens (no agent).
+# Agent preference persistence:
+#   The chosen agent is saved per-project in
+#   ~/.local/share/nvim/ide-preferences.local so the next `dev` in the
+#   same directory uses the same agent without prompting.  Use
+#   `dev -a <agent>` to override (which also updates the preference).
 #
 # In-session agent management (tmux keybindings):
 #   Prefix + A    Switch agent (interactive prompt)
 #   Prefix + N    Next agent (cycle forward)
 #   Prefix + D    Reset layout to default
-#
-# State is stored in tmux session options:
-#   @ide_agents         space-separated list of detected agents
-#   @ide_current_agent  currently active agent
-#   @ide_agent_pane     pane ID of the agent pane
-#   @ide_workdir        working directory for pane creation
 
 # Known coding agents, in preference order.
 KNOWN_AGENTS=("crush" "claude" "codex" "gemini" "aider" "copilot")
+
+PREFS_FILE="${PREFS_FILE:-$HOME/.local/share/nvim/ide-preferences.local}"
 
 AGENT=""
 SESSION_NAME=""
@@ -66,6 +62,30 @@ SESSION_NAME="${1:-$(basename "$(pwd)")}"
 WORKDIR="${2:-$(pwd)}"
 
 WORKDIR="${WORKDIR/#\~/$HOME}"
+
+# ---------------------------------------------------------------------------
+# Preferences: per-project agent preference
+# ---------------------------------------------------------------------------
+
+load_pref() {
+  local key="$1"
+  [[ -f "$PREFS_FILE" ]] || return 0
+  grep -E "^${key}=" "$PREFS_FILE" 2>/dev/null | head -1 | cut -d= -f2-
+}
+
+save_pref() {
+  local key="$1"
+  local value="$2"
+  mkdir -p "$(dirname "$PREFS_FILE")"
+  touch "$PREFS_FILE"
+  # Remove existing entry for this key, then append
+  local tmp
+  tmp=$(grep -vE "^${key}=" "$PREFS_FILE" 2>/dev/null || true)
+  {
+    echo "$tmp"
+    echo "${key}=${value}"
+  } > "$PREFS_FILE"
+}
 
 # ---------------------------------------------------------------------------
 # Quit: kill the session cleanly
@@ -150,13 +170,23 @@ select_agent_interactive() {
   fi
 }
 
-# Resolve agent: -a flag > auto-detect > interactive menu
+# Resolve agent: -a flag > saved preference > auto-detect > interactive menu
 detected=()
 if [[ -z "$AGENT" ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && detected+=("$line")
   done < <(detect_agents)
 
+  # Check saved preference for this project
+  saved_agent=$(load_pref "agent.${WORKDIR}")
+  if [[ -n "$saved_agent" ]]; then
+    if [[ "$saved_agent" == "none" ]] || command -v "$saved_agent" >/dev/null 2>&1; then
+      AGENT="$saved_agent"
+    fi
+  fi
+fi
+
+if [[ -z "$AGENT" ]]; then
   if [[ ${#detected[@]} -eq 0 ]]; then
     AGENT="none"
   elif [[ ${#detected[@]} -eq 1 ]]; then
@@ -165,6 +195,9 @@ if [[ -z "$AGENT" ]]; then
     AGENT=$(select_agent_interactive "${detected[@]}")
   fi
 fi
+
+# Save the agent preference for this project
+save_pref "agent.${WORKDIR}" "$AGENT"
 
 # ---------------------------------------------------------------------------
 # Session creation

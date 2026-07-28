@@ -22,6 +22,39 @@ set -euo pipefail
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 KNOWN_AGENTS=("crush" "claude" "codex" "gemini" "aider" "copilot")
+PREFS_FILE="${PREFS_FILE:-$HOME/.local/share/nvim/ide-preferences.local}"
+
+# ---------------------------------------------------------------------------
+# Preferences: per-project agent preference
+# ---------------------------------------------------------------------------
+
+load_pref() {
+  local key="$1"
+  [[ -f "$PREFS_FILE" ]] || return 0
+  grep -E "^${key}=" "$PREFS_FILE" 2>/dev/null | head -1 | cut -d= -f2-
+}
+
+save_pref() {
+  local key="$1"
+  local value="$2"
+  mkdir -p "$(dirname "$PREFS_FILE")"
+  touch "$PREFS_FILE"
+  local tmp
+  tmp=$(grep -vE "^${key}=" "$PREFS_FILE" 2>/dev/null || true)
+  {
+    echo "$tmp"
+    echo "${key}=${value}"
+  } > "$PREFS_FILE"
+}
+
+save_agent_pref() {
+  local session="$1"
+  local agent="$2"
+  local workdir
+  workdir=$(get_opt "$session" "@ide_workdir")
+  [[ -z "$workdir" ]] && return 0
+  save_pref "agent.${workdir}" "$agent"
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -116,6 +149,7 @@ launch_in_pane() {
 
   # Update state
   set_opt "$session" "@ide_current_agent" "$agent"
+  save_agent_pref "$session" "$agent"
   tmux select-pane -t "$agent_pane" -T "agent" 2>/dev/null || true
   tmux select-pane -t "$session:dev.1" 2>/dev/null || true
 }
@@ -296,6 +330,42 @@ show_status() {
   echo "Session: $session"
   echo "Current agent: $current"
   echo "Available agents: ${agents:-none detected}"
+
+  local workdir
+  workdir=$(get_opt "$session" "@ide_workdir")
+  if [[ -n "$workdir" ]]; then
+    local saved
+    saved=$(load_pref "agent.${workdir}")
+    echo "Saved preference: ${saved:-none}"
+  fi
+}
+
+show_prefs() {
+  if [[ ! -f "$PREFS_FILE" ]]; then
+    echo "No preferences file at $PREFS_FILE"
+    return 0
+  fi
+  echo "IDE preferences ($PREFS_FILE):"
+  grep -E "^[a-z]" "$PREFS_FILE" 2>/dev/null | sed 's/^/  /' || echo "  (empty)"
+}
+
+clear_pref() {
+  local session
+  session=$(get_session)
+  if [[ -z "$session" ]]; then
+    echo "Not in a tmux session"
+    exit 1
+  fi
+  local workdir
+  workdir=$(get_opt "$session" "@ide_workdir")
+  if [[ -z "$workdir" ]]; then
+    echo "No workdir stored for this session"
+    return 1
+  fi
+  local tmp
+  tmp=$(grep -vE "^agent.${workdir}=" "$PREFS_FILE" 2>/dev/null || true)
+  echo "$tmp" > "$PREFS_FILE"
+  tmux display-message "Cleared agent preference for $workdir"
 }
 
 # ---------------------------------------------------------------------------
@@ -332,8 +402,14 @@ main() {
     status)
       show_status
       ;;
+    prefs)
+      show_prefs
+      ;;
+    clear-pref)
+      clear_pref
+      ;;
     *)
-      echo "Usage: ide-agent.sh [switch|switch_to <name>|next|prev|reset|status]"
+      echo "Usage: ide-agent.sh [switch|switch_to <name>|next|prev|reset|status|prefs|clear-pref]"
       exit 1
       ;;
   esac
