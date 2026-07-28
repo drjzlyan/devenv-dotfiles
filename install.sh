@@ -1,15 +1,33 @@
 #!/usr/bin/env bash
 # Bootstrap a fresh macOS machine with the dotfiles toolchain.
 # Safe to run repeatedly; all steps are idempotent.
+#
+# This is the from-scratch installer.  rebuild.sh builds on top of the
+# setup created here (pull, relink, regenerate, sync, verify).
+#
+# Usage:
+#   ./install.sh           # full bootstrap
+#   ./install.sh --no-clone # skip cloning nvim-config (assume already present)
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTFILES_DIR="$REPO_ROOT"
+NVIM_CONFIG_PATH="${NVIM_CONFIG_PATH:-$REPO_ROOT/../nvim-config}"
+NVIM_CONFIG_REPO="${NVIM_CONFIG_REPO:-https://github.com/drjzlyan/nvim-config.git}"
 
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.local/cache}"
+
+CLONE_NVIM=1
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-clone) CLONE_NVIM=0 ;;
+    *) echo "Unknown option: $arg"; exit 1 ;;
+  esac
+done
 
 log() {
   printf '[dotfiles] %s\n' "$*"
@@ -73,33 +91,17 @@ install_mise() {
   fi
 }
 
-install_nvim_config() {
-  local nvim_config_path="${NVIM_CONFIG_PATH:-$REPO_ROOT/../nvim-config}"
-  if [[ ! -d "$nvim_config_path" ]]; then
-    warn "nvim-config not found at $nvim_config_path; skipping editor config link"
+clone_nvim_config() {
+  if [[ -d "$NVIM_CONFIG_PATH/.git" ]]; then
+    log "nvim-config already present at $NVIM_CONFIG_PATH"
     return 0
   fi
-  local target="$HOME/.config/nvim"
-  if [[ -e "$target" && ! -L "$target" ]]; then
-    local backup="$target.bak.$(date +%s)"
-    log "Backing up existing $target to $backup"
-    mv "$target" "$backup"
+  if [[ "$CLONE_NVIM" == 0 ]]; then
+    warn "nvim-config not found at $NVIM_CONFIG_PATH and --no-clone set; skipping"
+    return 0
   fi
-  if [[ -L "$target" ]]; then
-    rm "$target"
-  fi
-  ln -s "$nvim_config_path" "$target"
-  log "Linked nvim-config -> $target"
-}
-
-install_external_tools() {
-  local tool_script="${NVIM_CONFIG_PATH:-$REPO_ROOT/../nvim-config}/scripts/install-tools.sh"
-  if [[ -x "$tool_script" ]]; then
-    log "Running external tool installer..."
-    "$tool_script"
-  else
-    warn "External tool installer not found at $tool_script"
-  fi
+  log "Cloning nvim-config..."
+  git clone "$NVIM_CONFIG_REPO" "$NVIM_CONFIG_PATH"
 }
 
 select_languages() {
@@ -111,10 +113,19 @@ select_languages() {
       log "  To change: $lang_script"
       return 0
     fi
-    log "Launching language selection..."
+    log "Launching language & version selection..."
     "$lang_script"
   else
     warn "Language selector not found at $lang_script"
+  fi
+}
+
+sync_nvim_plugins() {
+  if command -v nvim >/dev/null 2>&1; then
+    log "Syncing nvim plugins..."
+    nvim --headless "+Lazy! sync" +qa 2>/dev/null || true
+  else
+    warn "nvim not found — skipping plugin sync"
   fi
 }
 
@@ -124,14 +135,15 @@ main() {
   install_packages
   install_uv
   install_mise
-  install_nvim_config
-  select_languages
-  install_external_tools
+  clone_nvim_config
   "$REPO_ROOT/link.sh"
+  select_languages
+  sync_nvim_plugins
   "$REPO_ROOT/doctor.sh"
 
   log "Bootstrap complete."
   log "  To add more languages later: ~/Development/dotfiles/scripts/languages.sh"
+  log "  To rebuild after updates: ~/Development/dotfiles/rebuild.sh"
 }
 
 main "$@"

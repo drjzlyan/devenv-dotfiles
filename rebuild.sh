@@ -131,15 +131,7 @@ step_mise() {
 
   if [[ -x "$REPO_ROOT/scripts/languages.sh" ]]; then
     "$REPO_ROOT/scripts/languages.sh" --list 2>/dev/null || true
-  fi
-
-  # Regenerate mise.toml by calling the generation function
-  # We do this by sourcing languages.sh and calling generate_mise_toml,
-  # but since that's a function inside the script, we just re-run
-  # the install_tools step which handles mise install.
-  if command -v mise >/dev/null 2>&1; then
-    log "  Installing mise runtimes from generated mise.toml..."
-    mise install 2>/dev/null || true
+    "$REPO_ROOT/scripts/languages.sh" --regenerate 2>/dev/null || true
   fi
 }
 

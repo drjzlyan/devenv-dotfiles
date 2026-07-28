@@ -9,21 +9,22 @@
 # key=value format:
 #
 #   # Languages configured for this machine.
-#   python=3.12.7
-#   java=17
-#   typescript=20.18.0
-#   go=1.23.3
+#   python=3.14
+#   java=25
+#   typescript=24
+#   go=1.26
 #   cpp=system
-#   rust=1.81.0
+#   rust=1.97
 #
 # Safe to re-run: existing selections are preserved, the user can add or
 # remove languages or change versions at any time without affecting other
 # settings.
 #
 # Usage:
-#   scripts/languages.sh          # interactive
-#   scripts/languages.sh --list   # print current selection and exit
-#   scripts/languages.sh --all    # select all languages (latest stable)
+#   scripts/languages.sh              # interactive
+#   scripts/languages.sh --list       # print current selection and exit
+#   scripts/languages.sh --all        # select all languages (latest stable)
+#   scripts/languages.sh --regenerate # regenerate mise.toml from selection
 
 set -euo pipefail
 
@@ -33,18 +34,22 @@ NVIM_DATA_DIR="${NVIM_DATA_DIR:-$HOME/.local/share/nvim}"
 LANGUAGES_FILE="$NVIM_DATA_DIR/languages.local"
 
 # All languages the IDE can configure.
-# Format: "lang:display:mise_tool:default_version_query"
-#   lang                 — module name in lua/languages/
-#   display              — human-readable name shown in the menu
-#   mise_tool           — mise tool name (for version lookup), or "none"
-#   default_version_query — what to show as the suggested default
+# Format: "lang:display:mise_tool:default_version:dedup_mode:keep_count"
+#   lang            — module name in lua/languages/
+#   display         — human-readable name shown in the menu
+#   mise_tool       — mise tool name (for version lookup), or "system"/"none"
+#   default_version — fallback version when mise is unavailable
+#   dedup_mode      — "major" (dedup by major number, e.g. 21 from 21.0.2)
+#                     "minor" (dedup by major.minor, e.g. 3.14 from 3.14.5)
+#                     "none"  (no version list — system toolchain)
+#   keep_count      — how many distinct versions to offer (5-10)
 ALL_LANGUAGES=(
-  "python:Python:python:3.12"
-  "java:Java:java:17"
-  "typescript:TypeScript/JS:node:20"
-  "go:Go:go:1.23"
-  "cpp:C/C++:system:system"
-  "rust:Rust:rust:1.81"
+  "python:Python:python:3.14:minor:7"
+  "java:Java:java:25:major:7"
+  "typescript:TypeScript/JS:node:24:major:7"
+  "go:Go:go:1.26:minor:7"
+  "cpp:C/C++:system:system:none:0"
+  "rust:Rust:rust:1.97:minor:10"
 )
 
 mkdir -p "$NVIM_DATA_DIR"
@@ -89,6 +94,7 @@ write_selection() {
     echo "# Edit manually or re-run the selector to change."
     echo ""
     for entry in "${entries[@]}"; do
+      [[ -z "$entry" ]] && continue
       echo "$entry"
     done
   } > "$LANGUAGES_FILE"
@@ -99,12 +105,39 @@ write_selection() {
 # Dynamic version discovery via mise
 # ---------------------------------------------------------------------------
 
+# Extract the dedup key from a version string based on the dedup mode.
+#   "major" → just the major number (e.g. "21" from "21.0.2")
+#   "minor" → major.minor (e.g. "3.14" from "3.14.5")
+version_key() {
+  local version="$1"
+  local mode="$2"
+  case "$mode" in
+    major) echo "${version%%.*}" ;;
+    minor)
+      local major="${version%%.*}"
+      local rest="${version#*.}"
+      echo "${major}.${rest%%.*}"
+      ;;
+    *) echo "$version" ;;
+  esac
+}
+
 # Query mise for available versions of a tool.
-# Prints the most recent stable versions (last 15, deduplicated by minor).
+# Prints the most recent stable versions deduplicated by the given mode.
+# Keeps the last N distinct version keys (showing the dedup key, e.g. "3.14"
+# or "21", not the full patch version — mise resolves the latest patch
+# automatically when given a major or major.minor specifier).
 # If mise is not installed, returns the fallback version.
 list_versions() {
   local tool="$1"
   local fallback="$2"
+  local dedup_mode="${3:-minor}"
+  local keep="${4:-10}"
+
+  if [[ "$dedup_mode" == "none" ]]; then
+    echo "$fallback"
+    return 0
+  fi
 
   if ! command -v mise >/dev/null 2>&1; then
     echo "$fallback"
@@ -112,73 +145,194 @@ list_versions() {
   fi
 
   local versions
-  versions=$(mise ls-remote "$tool" 2>/dev/null | grep -E '^[0-9]' | grep -vE '(alpha|beta|rc|dev|pre)' | tail -30 || true)
+  if [[ "$tool" == "java" ]]; then
+    # Java: only plain numeric versions (skip distro-prefixed like zulu-, temurin-)
+    versions=$(mise ls-remote "$tool" 2>/dev/null | grep -E '^[0-9]' | grep -vE '(alpha|beta|rc|dev|pre|ea)' || true)
+  else
+    versions=$(mise ls-remote "$tool" 2>/dev/null | grep -E '^[0-9]' | grep -vE '(alpha|beta|rc|dev|pre|nightly|a[0-9]|b[0-9])' || true)
+  fi
 
   if [[ -z "$versions" ]]; then
     echo "$fallback"
     return 0
   fi
 
-  # Deduplicate by major.minor — keep the latest patch for each
+  # Deduplicate by the dedup key — keep the first occurrence (latest patch
+  # for that key, since ls-remote is sorted ascending and the last entry for
+  # each key is the newest).
   local seen=""
   local result=()
   while IFS= read -r v; do
-    local minor="${v%.*}"
-    if [[ " $seen " != *" $minor "* ]]; then
-      seen="$seen $minor"
-      result+=("$v")
+    [[ -z "$v" ]] && continue
+    local key
+    key=$(version_key "$v" "$dedup_mode")
+    if [[ " $seen " != *" $key "* ]]; then
+      seen="$seen $key"
+      result+=("$key")
     fi
   done <<< "$versions"
 
-  # Print the last 10 (most recent)
+  # Print the last N keys (most recent)
   local start=0
-  if [[ ${#result[@]} -gt 10 ]]; then
-    start=$(( ${#result[@]} - 10 ))
+  if [[ ${#result[@]} -gt "$keep" ]]; then
+    start=$(( ${#result[@]} - keep ))
   fi
   for (( i=start; i<${#result[@]}; i++ )); do
     echo "${result[$i]}"
   done
 }
 
-# Interactive version picker.
-# Prompts the user to select from available versions or enter a custom one.
+# ---------------------------------------------------------------------------
+# Menu drawing helpers
+# ---------------------------------------------------------------------------
+
+LANG_MENU_WIDTH=60
+
+# Horizontal rule of LANG_MENU_WIDTH box dashes between two corner glyphs.
+menu_rule() {
+  printf '  %s' "$1"
+  local n=0
+  while (( n++ < LANG_MENU_WIDTH )); do printf '─'; done
+  printf '%s\n' "$2"
+}
+
+# A text row padded to LANG_MENU_WIDTH between two vertical glyphs.
+menu_row() {
+  printf '  │%-*s│\n' "$LANG_MENU_WIDTH" "$1"
+}
+
+# ---------------------------------------------------------------------------
+# Interactive version picker
+# ---------------------------------------------------------------------------
+
+# Prompts the user to pick from available versions or enter a custom one.
+# Arguments: tool display fallback [current_version] [dedup_mode] [keep]
 pick_version() {
   local tool="$1"
   local display="$2"
   local fallback="$3"
-  local current_version
-  current_version=$(get_language_version "${ALL_LANGUAGES_ENTRY_LANG:-}")
-
-  echo ""
-  echo "  Available ${display} versions (querying mise):"
+  local current_version="${4:-}"
+  local dedup_mode="${5:-minor}"
+  local keep="${6:-10}"
 
   local versions=()
   while IFS= read -r v; do
     versions+=("$v")
-  done < <(list_versions "$tool" "$fallback")
+  done < <(list_versions "$tool" "$fallback" "$dedup_mode" "$keep")
+
+  local default="$fallback"
+  [[ -n "$current_version" ]] && default="$current_version"
+
+  echo "" >&2
+  echo "  ${display} - available versions (via mise):" >&2
+  echo "" >&2
+  if [[ ${#versions[@]} -eq 0 ]]; then
+    echo "    (mise returned no versions; using ${default})" >&2
+  fi
 
   local i=1
   for v in "${versions[@]}"; do
-    local mark=" "
     if [[ "$v" == "$current_version" ]]; then
-      mark="*"
+      printf '  * %d. %-10s (current)\n' "$i" "$v" >&2
+    else
+      printf '    %d. %-10s\n' "$i" "$v" >&2
     fi
-    printf "  [%s] %d. %s\n" "$mark" "$i" "$v"
     i=$((i + 1))
   done
 
-  echo ""
-  echo "  Enter a number, type a version string, or Enter for default ($fallback)."
-  read -rp " > " choice
+  echo "" >&2
+  echo "  Pick a number, type an exact version, or Enter to keep (${default})." >&2
+  read -rp "  > " choice
 
   if [[ -z "$choice" ]]; then
-    echo "$fallback"
+    echo "$default"
   elif [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#versions[@]} ]]; then
     echo "${versions[$((choice - 1))]}"
   else
-    # Treat as a literal version string
     echo "$choice"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Selection helpers
+# ---------------------------------------------------------------------------
+
+# Parse one ALL_LANGUAGES entry into PE_* globals.
+# Format: "lang:display:mise_tool:default_version:dedup_mode:keep_count"
+parse_entry() {
+  local entry="$1"
+  PE_LANG="${entry%%:*}"
+  local rest="${entry#*:}"
+  PE_DISPLAY="${rest%%:*}"
+  rest="${rest#*:}"
+  PE_MISE_TOOL="${rest%%:*}"
+  rest="${rest#*:}"
+  PE_FALLBACK="${rest%%:*}"
+  rest="${rest#*:}"
+  PE_DEDUP="${rest%%:*}"
+  PE_KEEP="${rest##*:}"
+}
+
+# Insert or replace a language's version in the selection file.
+set_language_version() {
+  local lang="$1"
+  local version="$2"
+  local entries=()
+  local found=false
+  while IFS= read -r l; do
+    [[ -z "$l" ]] && continue
+    if [[ "$l" == "$lang" ]]; then
+      entries+=("${lang}=${version}")
+      found=true
+    else
+      entries+=("${l}=$(get_language_version "$l")")
+    fi
+  done < <(read_languages)
+  if [[ "$found" == false ]]; then
+    entries+=("${lang}=${version}")
+  fi
+  write_selection "${entries[@]}"
+}
+
+# Open the version picker for a language and save the chosen version.
+configure_language() {
+  local num="$1"
+  parse_entry "${ALL_LANGUAGES[$((num - 1))]}"
+
+  local version
+  if [[ "$PE_MISE_TOOL" == "system" || "$PE_MISE_TOOL" == "none" ]]; then
+    version="$PE_FALLBACK"
+    log "${PE_DISPLAY} uses the system toolchain -> ${version}"
+  else
+    version=$(pick_version "$PE_MISE_TOOL" "$PE_DISPLAY" "$PE_FALLBACK" "$(get_language_version "$PE_LANG")" "$PE_DEDUP" "$PE_KEEP")
+  fi
+  set_language_version "$PE_LANG" "$version"
+}
+
+# Remove a language from the selection.
+remove_language() {
+  local num="$1"
+  parse_entry "${ALL_LANGUAGES[$((num - 1))]}"
+  if ! is_selected "$PE_LANG"; then
+    log "${PE_DISPLAY} is not selected."
+    return 0
+  fi
+  local entries=()
+  while IFS= read -r l; do
+    [[ -z "$l" ]] && continue
+    [[ "$l" != "$PE_LANG" ]] && entries+=("${l}=$(get_language_version "$l")")
+  done < <(read_languages)
+  write_selection "${entries[@]}"
+}
+
+# Select every language at its fallback (latest stable) version.
+select_all_latest() {
+  local entries=()
+  for entry in "${ALL_LANGUAGES[@]}"; do
+    parse_entry "$entry"
+    entries+=("${PE_LANG}=${PE_FALLBACK}")
+  done
+  write_selection "${entries[@]}"
 }
 
 # ---------------------------------------------------------------------------
@@ -187,123 +341,56 @@ pick_version() {
 
 show_menu() {
   echo ""
-  echo "  ╔═══════════════════════════════════════════════════════════╗"
-  echo "  ║          Language Selection for Neovim IDE                ║"
-  echo "  ╠═══════════════════════════════════════════════════════════╣"
-  echo "  ║  Common languages are always available:                   ║"
-  echo "  ║    JSON, YAML, Bash, Lua, TOML, Markdown                  ║"
-  echo "  ╠═══════════════════════════════════════════════════════════╣"
-  echo "  ║  Toggle languages by number. 'v' to change version.       ║"
-  echo "  ║  Press Enter when done.                                   ║"
-  echo "  ╚═══════════════════════════════════════════════════════════╝"
+  menu_rule '┌' '┐'
+  menu_row " Language & Version Setup - Neovim IDE"
+  menu_rule '├' '┤'
+  menu_row " Always available (no setup needed):"
+  menu_row "   JSON, YAML, TOML, Bash, Lua, Markdown"
+  menu_rule '├' '┤'
+  menu_row " <N>    choose / change a language's version"
+  menu_row " r<N>    remove a language      a = all   n = clear all"
+  menu_row " Enter   finish selection"
+  menu_rule '└' '┘'
   echo ""
 
   local i=1
   for entry in "${ALL_LANGUAGES[@]}"; do
-    local lang="${entry%%:*}"
-    local rest="${entry#*:}"
-    local display="${rest%%:*}"
+    parse_entry "$entry"
     local mark=" "
-    local version_info=""
-    if is_selected "$lang"; then
-      mark="✓"
-      version_info=" ($(get_language_version "$lang"))"
+    local version_info="-"
+    if is_selected "$PE_LANG"; then
+      mark="x"
+      version_info="$(get_language_version "$PE_LANG")"
     fi
-    printf "  [%s] %d. %-14s %s%s\n" "$mark" "$i" "$lang" "$display" "$version_info"
+    printf '  [%s] %2d. %-16s %s\n' "$mark" "$i" "$PE_DISPLAY" "$version_info"
     i=$((i + 1))
   done
-
   echo ""
-  echo "  Commands: number=toggle, v<number>=version, a=all, n=none, Enter=done"
+  printf '  Choose a language (1-%d), or Enter to finish.\n' "${#ALL_LANGUAGES[@]}"
 }
 
 interactive() {
   while true; do
     show_menu
-    read -rp " > " choice
+    read -rp "  > " choice
 
     if [[ -z "$choice" ]]; then
       break
     elif [[ "$choice" == "a" || "$choice" == "A" ]]; then
-      local entries=()
-      for entry in "${ALL_LANGUAGES[@]}"; do
-        local lang="${entry%%:*}"
-        local rest="${entry#*:}"
-        local fallback="${rest##*:}"
-        entries+=("${lang}=${fallback}")
-      done
-      write_selection "${entries[@]}"
-      return
+      select_all_latest
+      continue
     elif [[ "$choice" == "n" || "$choice" == "N" ]]; then
       write_selection ""
-      return
-    elif [[ "$choice" == v* ]]; then
-      # Change version for a language
-      local num="${choice#v}"
-      if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#ALL_LANGUAGES[@]} ]]; then
-        local entry="${ALL_LANGUAGES[$((num - 1))]}"
-        local lang="${entry%%:*}"
-        local rest="${entry#*:}"
-        local display="${rest%%:*}"
-        local rest2="${rest#*:}"
-        local mise_tool="${rest2%%:*}"
-        local fallback="${rest2##*:}"
-
-        ALL_LANGUAGES_ENTRY_LANG="$lang"
-        local version
-        version=$(pick_version "$mise_tool" "$display" "$fallback")
-
-        # Update or add the language with the chosen version
-        local entries=()
-        local found=false
-        while IFS= read -r l; do
-          [[ -z "$l" ]] && continue
-          if [[ "$l" == "$lang" ]]; then
-            entries+=("${lang}=${version}")
-            found=true
-          else
-            entries+=("${l}=$(get_language_version "$l")")
-          fi
-        done < <(read_languages)
-        if [[ "$found" == false ]]; then
-          entries+=("${lang}=${version}")
-        fi
-        write_selection "${entries[@]}"
-      else
-        log "Invalid language number: $num"
-      fi
+      continue
+    elif [[ "$choice" =~ ^[rR][0-9]+$ ]]; then
+      local num="${choice:1}"
+      remove_language "$num"
+      continue
     elif [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#ALL_LANGUAGES[@]} ]]; then
-      local entry="${ALL_LANGUAGES[$((choice - 1))]}"
-      local lang="${entry%%:*}"
-      local rest="${entry#*:}"
-      local rest2="${rest#*:}"
-      local mise_tool="${rest2%%:*}"
-      local fallback="${rest2##*:}"
-
-      # Toggle: if selected, remove; if not selected, pick a version then add
-      if is_selected "$lang"; then
-        # Remove
-        local entries=()
-        while IFS= read -r l; do
-          [[ -z "$l" ]] && continue
-          [[ "$l" != "$lang" ]] && entries+=("${l}=$(get_language_version "$l")")
-        done < <(read_languages)
-        write_selection "${entries[@]}"
-      else
-        # Add with version selection
-        ALL_LANGUAGES_ENTRY_LANG="$lang"
-        local version
-        version=$(pick_version "$mise_tool" "$(echo "$rest" | cut -d: -f1)" "$fallback")
-        local entries=()
-        while IFS= read -r l; do
-          [[ -z "$l" ]] && continue
-          entries+=("${l}=$(get_language_version "$l")")
-        done < <(read_languages)
-        entries+=("${lang}=${version}")
-        write_selection "${entries[@]}"
-      fi
+      configure_language "$choice"
+      continue
     else
-      log "Invalid choice: $choice"
+      log "Invalid choice: $choice (try a number, r<N>, a, n, or Enter)"
     fi
   done
 }
@@ -316,6 +403,17 @@ generate_mise_toml() {
   local mise_file="$DOTFILES_ROOT/mise.toml"
   local has_mise=false
   command -v mise >/dev/null 2>&1 && has_mise=true
+
+  # Determine which env vars to emit based on the selection
+  local has_java=false has_go=false has_rust=false
+  while IFS= read -r l; do
+    [[ -z "$l" ]] && continue
+    case "$l" in
+      java*)     has_java=true ;;
+      go*)       has_go=true ;;
+      rust*)     has_rust=true ;;
+    esac
+  done < <(read_languages)
 
   {
     echo "# Generated by dotfiles/scripts/languages.sh from languages.local"
@@ -348,9 +446,19 @@ generate_mise_toml() {
   {
     echo ""
     echo "[env]"
-    echo "JAVA_HOME = \"{{ ~/.local/share/mise/installs/java/17 }}\""
-    echo "GOPATH = \"{{ env.HOME }}/.local/share/go\""
-    echo "CARGO_HOME = \"{{ env.HOME }}/.local/share/cargo\""
+    # JAVA_HOME: use mise's built-in tool path resolver.  The previous
+    # template used "~" which is invalid Tera syntax, and hardcoded "17"
+    # instead of the selected version.  {{ tools.java.path }} resolves
+    # dynamically to whatever java version is in [tools] above.
+    if [[ "$has_java" == true ]]; then
+      echo "JAVA_HOME = { value = \"{{ tools.java.path }}\", tools = true }"
+    fi
+    if [[ "$has_go" == true ]]; then
+      echo "GOPATH = \"{{ env.HOME }}/.local/share/go\""
+    fi
+    if [[ "$has_rust" == true ]]; then
+      echo "CARGO_HOME = \"{{ env.HOME }}/.local/share/cargo\""
+    fi
     echo ""
     echo "[settings]"
     echo "experimental = true"
@@ -396,24 +504,28 @@ main() {
       return 0
       ;;
     --all)
-      local entries=()
-      for entry in "${ALL_LANGUAGES[@]}"; do
-        local lang="${entry%%:*}"
-        local rest="${entry#*:}"
-        local fallback="${rest##*:}"
-        entries+=("${lang}=${fallback}")
-      done
-      write_selection "${entries[@]}"
+      select_all_latest
+      generate_mise_toml
+      install_tools
+      return 0
+      ;;
+    --regenerate)
+      if [[ ! -f "$LANGUAGES_FILE" ]]; then
+        log "No languages.local found — nothing to regenerate."
+        log "Run: scripts/languages.sh"
+        return 1
+      fi
       generate_mise_toml
       install_tools
       return 0
       ;;
     --help|-h)
-      echo "Usage: languages.sh [--list|--all|--help]"
+      echo "Usage: languages.sh [--list|--all|--regenerate|--help]"
       echo ""
-      echo "  (no args)  Interactive language + version selection menu"
-      echo "  --list    Print currently selected languages and versions"
-      echo "  --all     Select all languages (latest stable) and install"
+      echo "  (no args)     Interactive language + version selection menu"
+      echo "  --list       Print currently selected languages and versions"
+      echo "  --all        Select all languages (latest stable) and install"
+      echo "  --regenerate Regenerate mise.toml from existing selection (no menu)"
       return 0
       ;;
   esac

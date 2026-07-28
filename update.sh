@@ -41,7 +41,7 @@ if [[ -f "$REPO_ROOT/mise.toml" ]]; then
 fi
 
 log "Updating external tools (for selected languages)..."
-local tool_script="$REPO_ROOT/../nvim-config/scripts/update-tools.sh"
+tool_script="$REPO_ROOT/../nvim-config/scripts/update-tools.sh"
 if [[ -x "$tool_script" ]]; then
   "$tool_script" 2>/dev/null || true
 fi

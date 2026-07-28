@@ -21,10 +21,13 @@ in [`nvim-config`](https://github.com/drjzlyan/nvim-config).
 git clone https://github.com/drjzlyan/devenv-dotfiles.git
 cd dotfiles
 ./install.sh
-./link.sh
 ```
 
-`install.sh` is idempotent: running it again only installs missing pieces.
+`install.sh` is a full from-scratch bootstrap: it installs Homebrew, packages,
+uv, and mise, clones [`nvim-config`](https://github.com/drjzlyan/nvim-config),
+links all dotfiles, launches the language selector, syncs nvim plugins, and
+runs a health check.  It is idempotent — running it again only fills in
+missing pieces.
 
 ## Update
 
@@ -93,7 +96,7 @@ versions to install** — versions are queried dynamically from `mise ls-remote`
 - **Selectable**: Python, Java, TypeScript, Go, C/C++, Rust
 
 ```bash
-# Interactive menu — toggle languages, change versions (non-destructive)
+# Interactive menu — choose languages and their versions (non-destructive)
 ./scripts/languages.sh          # interactive menu
 ./scripts/languages.sh --list   # show current selection with versions
 ./scripts/languages.sh --all    # select all (latest stable) + install

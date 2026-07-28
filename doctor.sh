@@ -6,44 +6,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NVIM_CONFIG_PATH="${NVIM_CONFIG_PATH:-$REPO_ROOT/../nvim-config}"
 
-extract_version() {
-  local output="$1"
-  echo "$output" | sed -n 's/.*\([0-9]\+\.[0-9]\+\(\.[0-9]\+\)\).*/\1/p' | head -n 1
-}
-
-check_version() {
-  local name="$1"
-  local expected="$2"
-  local cmd="$3"
-  if ! command -v "$name" >/dev/null 2>&1; then
-    echo "[missing] $name"
-    return 1
-  fi
-  local actual
-  actual=$(extract_version "$($cmd 2>&1)")
-  if [[ -z "$expected" ]]; then
-    echo "[ok] $name ($actual)"
-    return 0
-  fi
-  if [[ "$actual" == "$expected" || "$actual" == "$expected"* ]]; then
-    echo "[ok] $name ($actual)"
-    return 0
-  fi
-  echo "[version mismatch] $name: expected $expected, found $actual"
-  return 1
-}
-
-check_tools_lock() {
-  local mismatch=0
-  if has_language "python"; then
-    check_version "basedpyright" "" "basedpyright --version" || mismatch=1
-    check_version "ruff" "" "ruff --version" || mismatch=1
-  fi
-  if has_language "java"; then
-    check_version "jdtls" "" "jdtls --version" || mismatch=1
-  fi
-  return "$mismatch"
-}
+fail=0
 
 # ---------------------------------------------------------------------------
 # Language selection helpers (reads key=value format)
@@ -73,8 +36,21 @@ has_language() {
 }
 
 # ---------------------------------------------------------------------------
-# Check language-specific tools
+# Tool checks
 # ---------------------------------------------------------------------------
+
+check_cmd() {
+  local name="$1"
+  local cmd="$2"
+  if command -v "$name" >/dev/null 2>&1; then
+    local ver
+    ver=$(eval "$cmd" 2>&1 | head -n 1 || true)
+    echo "[ok] $name ($ver)"
+  else
+    echo "[missing] $name"
+    fail=1
+  fi
+}
 
 check_language_tools() {
   if [[ ${#selected_languages[@]} -eq 0 ]]; then
@@ -94,8 +70,22 @@ check_language_tools() {
         ;;
       java)
         check_cmd "java" "java -version 2>&1"
-        check_cmd "jdtls" "jdtls --version"
+        check_cmd "jdtls" "jdtls --help 2>&1 | head -1"
         check_cmd "mvn" "mvn --version"
+        # JDK sanity check (managed by mise)
+        if command -v mise >/dev/null 2>&1; then
+          local java_ver="${selected_versions[java]:-}"
+          if [[ -n "$java_ver" ]]; then
+            local jdk_path
+            jdk_path=$(mise where "java@${java_ver}" 2>/dev/null || true)
+            if [[ -n "$jdk_path" && -d "$jdk_path" ]]; then
+              echo "[ok] JDK ${java_ver} via mise ($jdk_path)"
+            else
+              echo "[missing] JDK ${java_ver} (run: mise install java@${java_ver})"
+              fail=1
+            fi
+          fi
+        fi
         ;;
       typescript)
         check_cmd "node" "node --version"
@@ -122,17 +112,9 @@ check_language_tools() {
   done
 }
 
-check_cmd() {
-  local name="$1"
-  local cmd="$2"
-  if command -v "$name" >/dev/null 2>&1; then
-    local ver
-    ver=$($cmd 2>&1 | head -n 1)
-    echo "[ok] $name ($ver)"
-  else
-    echo "[missing] $name"
-  fi
-}
+# ---------------------------------------------------------------------------
+# Core tool checks
+# ---------------------------------------------------------------------------
 
 commands=(
   brew
@@ -172,8 +154,6 @@ symlinks=(
   "$HOME/.config/starship/starship.toml:$REPO_ROOT/starship.toml"
 )
 
-fail=0
-
 for cmd in "${commands[@]}"; do
   if command -v "$cmd" >/dev/null 2>&1; then
     echo "[ok] $cmd"
@@ -194,31 +174,15 @@ for entry in "${symlinks[@]}"; do
   fi
 done
 
-# Optional development tools for the Neovim configuration
-# (checked based on language selection above)
+# ---------------------------------------------------------------------------
+# Language-specific tool checks
+# ---------------------------------------------------------------------------
 
 check_language_tools
 
-check_tools_lock || fail=1
-
-# JDK sanity check (managed by mise)
-if command -v mise >/dev/null 2>&1; then
-  for v in 17 11 8; do
-    jdk_path=$(mise where java@"$v" 2>/dev/null || true)
-    if [[ -n "$jdk_path" && -d "$jdk_path" ]]; then
-      echo "[ok] JDK $v via mise ($jdk_path)"
-    else
-      echo "[missing] JDK $v (run: mise install java@$v)"
-    fi
-  done
-fi
-
-if command -v java >/dev/null 2>&1; then
-  echo "[ok] java ($(java -version 2>&1 | head -n 1))"
-else
-  echo "[missing] java"
-  fail=1
-fi
+# ---------------------------------------------------------------------------
+# Result
+# ---------------------------------------------------------------------------
 
 if [[ $fail -eq 0 ]]; then
   echo "[dotfiles] All required checks passed."
