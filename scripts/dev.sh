@@ -16,8 +16,8 @@ set -euo pipefail
 #   └──────────────────────┴──────────────────┘
 #
 # Git workflow:
-#   Inside nvim → <leader>gg opens lazygit in a floating window (primary)
-#   From any pane → Ctrl-a g opens lazygit in an on-demand tmux window
+#   Window 2 (git) → lazygit opens automatically on session start
+#   From any pane → Ctrl-a g switches to the git window (or creates one)
 #
 # Usage:
 #   dev                     # session named after current dir
@@ -249,6 +249,9 @@ tmux set-option -t "$SESSION_NAME" @ide_current_agent "$AGENT"
 tmux set-option -t "$SESSION_NAME" @ide_workdir "$WORKDIR"
 AGENT_PANE=$(tmux display-message -p -t "$SESSION_NAME:dev.2" "#{pane_id}")
 tmux set-option -t "$SESSION_NAME" @ide_agent_pane "$AGENT_PANE"
+
+# ── Window 2: git ──────────────────────────────────────────────
+tmux new-window -t "$SESSION_NAME" -n git -c "$WORKDIR" "lazygit"
 
 # ── Attach ─────────────────────────────────────────────────────
 exec tmux attach -t "$SESSION_NAME:dev"
