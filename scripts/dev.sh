@@ -50,11 +50,13 @@ AGENT=""
 SESSION_NAME=""
 WORKDIR=""
 KILL_EXISTING=0
+QUIT=0
 
-while getopts "a:k" opt; do
+while getopts "a:kq" opt; do
   case "$opt" in
     a) AGENT="$OPTARG" ;;
     k) KILL_EXISTING=1 ;;
+    q) QUIT=1 ;;
     *) ;;
   esac
 done
@@ -64,6 +66,23 @@ SESSION_NAME="${1:-$(basename "$(pwd)")}"
 WORKDIR="${2:-$(pwd)}"
 
 WORKDIR="${WORKDIR/#\~/$HOME}"
+
+# ---------------------------------------------------------------------------
+# Quit: kill the session cleanly
+# ---------------------------------------------------------------------------
+
+if [[ "$QUIT" == 1 ]]; then
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    # Save nvim sessions if auto-session is configured
+    tmux send-keys -t "$SESSION_NAME:dev.1" ":qa!" Enter 2>/dev/null || true
+    sleep 1
+    tmux kill-session -t "$SESSION_NAME"
+    echo "Session '$SESSION_NAME' terminated."
+  else
+    echo "Session '$SESSION_NAME' does not exist."
+  fi
+  exit 0
+fi
 
 if [[ ! -d "$WORKDIR" ]]; then
   echo "Error: directory '$WORKDIR' does not exist."
@@ -176,6 +195,7 @@ tmux split-window -v -l 40% -t "$SESSION_NAME:dev.2" -c "$WORKDIR"
 tmux select-pane -t "$SESSION_NAME:dev.2" -T "agent"
 if [[ "$AGENT" != "none" ]]; then
   if command -v "$AGENT" >/dev/null 2>&1; then
+    sleep 1
     tmux send-keys -t "$SESSION_NAME:dev.2" "$AGENT" Enter
   else
     echo "Warning: agent '$AGENT' not found on PATH; opening a shell instead."

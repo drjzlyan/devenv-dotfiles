@@ -147,6 +147,7 @@ reset_layout() {
     local current
     current=$(ensure_current "$session")
     if [[ "$current" != "none" ]] && command -v "$current" >/dev/null 2>&1; then
+      sleep 1
       tmux send-keys -t "$session:dev.2" "$current" Enter
     fi
 
@@ -183,6 +184,7 @@ reset_layout() {
   local current
   current=$(ensure_current "$session")
   if [[ "$current" != "none" ]] && command -v "$current" >/dev/null 2>&1; then
+    sleep 1
     tmux send-keys -t "$session:dev.2" "$current" Enter
   fi
 

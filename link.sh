@@ -86,6 +86,7 @@ main() {
 
   link_internal "../scripts/dev.sh" "bin/dev"
   link_internal "../scripts/ide-agent.sh" "bin/ide-agent"
+  link_internal "../scripts/project-init.sh" "bin/project-init"
   link_internal "../rebuild.sh" "bin/rebuild"
 
   echo "[link] Done."
