@@ -120,7 +120,6 @@ commands=(
   brew
   nvim
   tmux
-  ghostty
   lazygit
   rg
   fd
@@ -159,6 +158,20 @@ for cmd in "${commands[@]}"; do
     echo "[ok] $cmd"
   else
     echo "[missing] $cmd"
+    fail=1
+  fi
+done
+
+# Cask apps (GUI tools not on PATH)
+cask_apps=(
+  ghostty
+)
+
+for app in "${cask_apps[@]}"; do
+  if command -v brew >/dev/null 2>&1 && brew list --cask "$app" >/dev/null 2>&1; then
+    echo "[ok] $app (cask)"
+  else
+    echo "[missing] $app (run: brew install --cask $app)"
     fail=1
   fi
 done
