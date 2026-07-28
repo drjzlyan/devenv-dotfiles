@@ -98,19 +98,19 @@ select_agent_interactive() {
     return
   fi
 
-  echo ""
-  echo "  Multiple coding agents detected:"
-  echo ""
+  echo "" >&2
+  echo "  Multiple coding agents detected:" >&2
+  echo "" >&2
   local i=1
   for agent in "${agents[@]}"; do
-    printf "  %d. %s\n" "$i" "$agent"
+    printf "  %d. %s\n" "$i" "$agent" >&2
     i=$((i + 1))
   done
-  echo "  0. none (just a shell)"
-  echo ""
-  echo "  Enter a number, type a command name, or Enter for #1."
-  echo "  Ctrl-C cancels (opens a shell)."
-  echo ""
+  echo "  0. none (just a shell)" >&2
+  echo "" >&2
+  echo "  Enter a number, type a command name, or Enter for #1." >&2
+  echo "  Ctrl-C cancels (opens a shell)." >&2
+  echo "" >&2
 
   local choice
   if ! read -rp " > " choice 2>/dev/null; then
