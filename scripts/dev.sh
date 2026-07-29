@@ -72,7 +72,7 @@ WORKDIR="${WORKDIR/#\~/$HOME}"
 load_pref() {
   local key="$1"
   [[ -f "$PREFS_FILE" ]] || return 0
-  grep -E "^${key}=" "$PREFS_FILE" 2>/dev/null | head -1 | cut -d= -f2-
+  grep -E "^${key}=" "$PREFS_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true
 }
 
 save_pref() {
