@@ -168,15 +168,21 @@ reset_layout() {
   if ! tmux list-windows -t "$session" -F "#{window_name}" 2>/dev/null | grep -q "^dev$"; then
     tmux display-message "Recreating 'dev' window in session '$session'"
     tmux new-window -t "$session" -n dev -c "$workdir"
+    tmux select-pane -t "$session:dev.1" -T "editor"
+    tmux send-keys -t "$session:dev.1" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
     tmux send-keys -t "$session:dev.1" "nvim" Enter
     tmux split-window -h -l 35% -t "$session:dev.1" -c "$workdir"
     tmux split-window -v -l 40% -t "$session:dev.2" -c "$workdir"
     tmux select-pane -t "$session:dev.2" -T "agent"
+    tmux send-keys -t "$session:dev.2" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
     tmux select-pane -t "$session:dev.3" -T "build/test"
+    tmux send-keys -t "$session:dev.3" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
 
     local agent_pane
     agent_pane=$(tmux display-message -p -t "$session:dev.2" "#{pane_id}")
     set_opt "$session" "@ide_agent_pane" "$agent_pane"
+    set_opt "$session" "@ide_editor_pane" "$(tmux display-message -p -t "$session:dev.1" "#{pane_id}")"
+    set_opt "$session" "@ide_shell_pane" "$(tmux display-message -p -t "$session:dev.3" "#{pane_id}")"
 
     local current
     current=$(ensure_current "$session")
@@ -204,15 +210,20 @@ reset_layout() {
   fi
 
   # Recreate the right-side layout
+  tmux select-pane -t "$session:dev.1" -T "editor"
   tmux split-window -h -l 35% -t "$session:dev.1" -c "$workdir"
   tmux split-window -v -l 40% -t "$session:dev.2" -c "$workdir"
   tmux select-pane -t "$session:dev.2" -T "agent"
+  tmux send-keys -t "$session:dev.2" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
   tmux select-pane -t "$session:dev.3" -T "build/test"
+  tmux send-keys -t "$session:dev.3" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
 
   # Update stored pane IDs
   local agent_pane
   agent_pane=$(tmux display-message -p -t "$session:dev.2" "#{pane_id}")
   set_opt "$session" "@ide_agent_pane" "$agent_pane"
+  set_opt "$session" "@ide_editor_pane" "$(tmux display-message -p -t "$session:dev.1" "#{pane_id}")"
+  set_opt "$session" "@ide_shell_pane" "$(tmux display-message -p -t "$session:dev.3" "#{pane_id}")"
 
   # Launch the current agent in the agent pane
   local current

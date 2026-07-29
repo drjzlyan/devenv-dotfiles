@@ -15,7 +15,7 @@ machine.
 | `update.sh` | Routine maintenance: brew upgrade, mise upgrade, plugin sync |
 | `doctor.sh` | Validate the environment |
 | `Brewfile` | Single source of truth for packages and casks |
-| `scripts/` | Language selector, dev session launcher, agent management, backups |
+| `scripts/` | Language selector, dev session launcher, agent management, tmux command runner, backups |
 
 ## Script hierarchy
 

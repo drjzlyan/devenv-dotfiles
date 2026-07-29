@@ -101,6 +101,7 @@ dotfiles/
 ├── scripts/
 │   ├── dev.sh          # Launch tmux IDE session
 │   ├── ide-agent.sh    # In-session agent management CLI
+│   ├── ide-run.sh      # Run commands in the tmux build/test pane
 │   ├── languages.sh    # Interactive language/version selector
 │   ├── project-init.sh # Project scaffolding tool
 │   ├── backup.sh       # Backup non-symlinked config files
@@ -173,6 +174,22 @@ ide-agent reset         # reset pane layout to default
 ide-agent prefs         # show contents of the preferences file
 ide-agent clear-pref    # remove saved agent preference for current project
 ```
+
+`scripts/ide-run.sh` (available as `ide-run` on `$PATH`) routes shell commands
+to the session's `build/test` pane, creating the pane on demand if it is
+missing. Neovim task/test keymaps use it automatically when running inside
+tmux, so build and test output stays in the tmux pane instead of a separate
+editor terminal:
+
+```bash
+ide-run 'make test'            # run in the build/test pane
+ide-run -d /path 'go test ./...'
+ide-run --focus                # just focus the build/test pane
+```
+
+All IDE panes export `EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit`,
+so anything that opens an editor (coding agents, `git commit`, lazygit) reuses
+the Neovim instance running in the editor pane instead of spawning a new one.
 
 ## Project scaffolding
 

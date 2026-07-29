@@ -217,7 +217,14 @@ tmux has-session -t "$SESSION_NAME" 2>/dev/null && {
 # ── Window 1: dev ──────────────────────────────────────────────
 tmux new-session -d -s "$SESSION_NAME" -n dev -c "$WORKDIR"
 
+# Route file editing (git, lazygit, coding agents) into the nvim pane
+for var in EDITOR VISUAL GIT_EDITOR; do
+  tmux set-environment -t "$SESSION_NAME" "$var" "nvim-edit"
+done
+
 # Left pane: nvim (65% width)
+tmux select-pane -t "$SESSION_NAME:dev.1" -T "editor"
+tmux send-keys -t "$SESSION_NAME:dev.1" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
 tmux send-keys -t "$SESSION_NAME:dev.1" "nvim" Enter
 
 # Split right pane (35% width)
@@ -228,6 +235,7 @@ tmux split-window -v -l 40% -t "$SESSION_NAME:dev.2" -c "$WORKDIR"
 
 # Right-top pane: agent
 tmux select-pane -t "$SESSION_NAME:dev.2" -T "agent"
+tmux send-keys -t "$SESSION_NAME:dev.2" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
 if [[ "$AGENT" != "none" ]]; then
   if command -v "$AGENT" >/dev/null 2>&1; then
     sleep 1
@@ -239,6 +247,7 @@ fi
 
 # Right-bottom pane: build/test shell (stays at prompt)
 tmux select-pane -t "$SESSION_NAME:dev.3" -T "build/test"
+tmux send-keys -t "$SESSION_NAME:dev.3" "export EDITOR=nvim-edit VISUAL=nvim-edit GIT_EDITOR=nvim-edit" Enter
 
 # Focus nvim
 tmux select-pane -t "$SESSION_NAME:dev.1"
@@ -249,6 +258,10 @@ tmux set-option -t "$SESSION_NAME" @ide_current_agent "$AGENT"
 tmux set-option -t "$SESSION_NAME" @ide_workdir "$WORKDIR"
 AGENT_PANE=$(tmux display-message -p -t "$SESSION_NAME:dev.2" "#{pane_id}")
 tmux set-option -t "$SESSION_NAME" @ide_agent_pane "$AGENT_PANE"
+EDITOR_PANE=$(tmux display-message -p -t "$SESSION_NAME:dev.1" "#{pane_id}")
+tmux set-option -t "$SESSION_NAME" @ide_editor_pane "$EDITOR_PANE"
+SHELL_PANE=$(tmux display-message -p -t "$SESSION_NAME:dev.3" "#{pane_id}")
+tmux set-option -t "$SESSION_NAME" @ide_shell_pane "$SHELL_PANE"
 
 # ── Window 2: git ──────────────────────────────────────────────
 tmux new-window -t "$SESSION_NAME" -n git -c "$WORKDIR" "lazygit"
