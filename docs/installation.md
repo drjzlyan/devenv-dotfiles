@@ -15,17 +15,24 @@ cd dotfiles
 ```
 
 This installs Homebrew, all command-line tools, Ghostty, tmux, the
-JetBrainsMono Nerd Font, Temurin JDKs, and uv.
+JetBrainsMono Nerd Font, Temurin JDKs, and uv. It also calls `link.sh`
+internally, so symlinks are created as part of this step — no need to run
+`link.sh` separately on a fresh install.
 
-## 3. Symlink configuration
+Optional flags:
+
+| Flag | Effect |
+|------|--------|
+| `--no-clone` | Skip cloning nvim-config (use if already cloned) |
+| `--reselect` | Re-run the language selector even if already configured |
+
+To refresh symlinks after pulling updates without running the full bootstrap:
 
 ```bash
 ./link.sh
 ```
 
-The script backs up any existing files and creates symlinks from `$HOME`.
-
-## 4. Configure Git user
+## 3. Configure Git user
 
 Create `~/.gitconfig.local`:
 
@@ -35,7 +42,7 @@ Create `~/.gitconfig.local`:
     email = you@example.com
 ```
 
-## 5. Install Neovim configuration
+## 4. Install Neovim configuration
 
 ```bash
 cd ../nvim-config
@@ -43,7 +50,7 @@ cd ../nvim-config
 nvim
 ```
 
-## 6. Verify
+## 5. Verify
 
 ```bash
 cd ../dotfiles

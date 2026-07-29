@@ -26,8 +26,15 @@ cd dotfiles
 `install.sh` is a full from-scratch bootstrap: it installs Homebrew, packages,
 uv, and mise, clones [`nvim-config`](https://github.com/drjzlyan/nvim-config),
 links all dotfiles, launches the language selector, syncs nvim plugins, and
-runs a health check.  It is idempotent — running it again only fills in
+runs a health check. It is idempotent — running it again only fills in
 missing pieces.
+
+Optional flags:
+
+| Flag | Effect |
+|------|--------|
+| `--no-clone` | Skip cloning nvim-config (use if already cloned manually) |
+| `--reselect` | Re-run the language selector even if a selection already exists |
 
 ## Update
 
@@ -35,7 +42,9 @@ missing pieces.
 ./update.sh
 ```
 
-This updates Homebrew, upgrades installed packages, and re-applies the Brewfile.
+Updates Homebrew, upgrades installed packages, re-applies the Brewfile, runs
+`uv self update`, upgrades all mise-managed runtimes (`mise upgrade`), and
+runs `nvim-config/scripts/update-tools.sh` to refresh external Neovim tools.
 
 ## Rebuild
 
@@ -64,26 +73,40 @@ Rebuild preserves your language selection (`languages.local`), Git identity
 ./doctor.sh
 ```
 
-Checks that expected tools and symlinks are in place.
+Checks that expected tools and symlinks are in place. Verifies: core CLI tools,
+Ghostty cask, symlink correctness for all dotfiles, `dev.sh` executability, and
+per-language tooling driven by `languages.local`. A failing check shows the
+missing item; a passing check shows nothing.
 
 ## Directory layout
 
 ```
 dotfiles/
-├── Brewfile              # Homebrew packages and casks
-├── install.sh            # First-time machine bootstrap
-├── update.sh             # Maintenance / upgrades
-├── rebuild.sh            # Re-apply setup after pulling updates
-├── link.sh               # Symlink dotfiles into $HOME
-├── doctor.sh             # Health check
-├── .zshrc                # Shell configuration
-├── .tmux.conf            # tmux configuration
-├── .gitconfig            # Git defaults
-├── .gitignore_global     # Global ignore patterns
-├── starship.toml         # Starship prompt
-├── config/ghostty/config # Ghostty terminal config
-├── scripts/              # Utility scripts (languages.sh, dev.sh, backup.sh, …)
-└── docs/                 # Documentation
+├── Brewfile                    # Homebrew packages and casks
+├── install.sh                  # First-time machine bootstrap
+├── update.sh                   # Maintenance / upgrades
+├── rebuild.sh                  # Re-apply setup after pulling updates
+├── link.sh                     # Symlink dotfiles into $HOME
+├── unlink.sh                   # Reverse all symlinks (restores backups)
+├── doctor.sh                   # Health check
+├── mise.toml                   # Runtime versions (auto-generated; do not edit)
+├── .zshrc                      # Shell configuration
+├── .tmux.conf                  # tmux configuration
+├── .gitconfig                  # Git defaults
+├── .gitignore_global           # Global ignore patterns
+├── starship.toml               # Starship prompt
+├── config/ghostty/config       # Ghostty terminal config
+├── config/lazygit/config.yml   # Lazygit configuration
+├── bin/nvim-edit               # Open a file in the nvim tmux pane
+├── scripts/
+│   ├── dev.sh          # Launch tmux IDE session
+│   ├── ide-agent.sh    # In-session agent management CLI
+│   ├── languages.sh    # Interactive language/version selector
+│   ├── project-init.sh # Project scaffolding tool
+│   ├── backup.sh       # Backup non-symlinked config files
+│   ├── relink.sh       # Remove and re-apply all symlinks
+│   └── macos-defaults.sh # macOS system defaults
+└── docs/                       # Documentation
 ```
 
 ## Language and version selection
@@ -118,9 +141,15 @@ dev                     # auto-detect agents, prompt if multiple
 dev -a claude           # use a specific agent
 dev -a none             # no agent, just a shell
 dev -k                  # kill existing session and recreate
+dev -q                  # quit / kill the existing session
 ```
 
 Detected agents: crush, claude, codex, gemini, aider, copilot.
+
+The chosen agent is saved per project directory to
+`~/.local/share/nvim/ide-preferences.local`. Re-opening the same directory
+with `dev` reuses the saved agent without prompting. `dev -a <agent>` both sets
+the session agent and updates the saved preference.
 
 In-session keybindings (tmux prefix is `Ctrl-a`):
 
@@ -129,15 +158,79 @@ In-session keybindings (tmux prefix is `Ctrl-a`):
 | `Ctrl-a A` | Switch agent (interactive prompt) |
 | `Ctrl-a N` | Cycle to next agent |
 | `Ctrl-a D` | Reset layout to default (preserves nvim) |
+| `Ctrl-a Q` | Kill IDE session (with confirmation) |
+| `Ctrl-a P` | Create new project (prompts for `language:name`) |
+| `Ctrl-a S` | Toggle synchronize-panes mode |
 
 `scripts/ide-agent.sh` provides the same operations from the command line:
 
 ```bash
-ide-agent status     # show current agent and available agents
-ide-agent switch     # interactive switch (from within tmux)
-ide-agent next       # cycle to next agent
-ide-agent reset      # reset layout
+ide-agent status        # show current agent, available agents, and saved pref
+ide-agent switch        # interactive switch (from within tmux)
+ide-agent next          # cycle to next agent
+ide-agent prev          # cycle to previous agent
+ide-agent reset         # reset pane layout to default
+ide-agent prefs         # show contents of the preferences file
+ide-agent clear-pref    # remove saved agent preference for current project
 ```
+
+## Project scaffolding
+
+`scripts/project-init.sh` (available as `project-init` on `$PATH`) creates a
+language-appropriate project scaffold, runs `git init`, and — if inside a tmux
+session — opens the project in a new dev window.
+
+```bash
+project-init <language> <name> [parent_dir]
+```
+
+| Language | Example | What it creates |
+|----------|---------|-----------------|
+| `python` | `project-init python myapp` | `pyproject.toml`, `src/myapp/`, `tests/`, `.gitignore` |
+| `java` | `project-init java com.example.myapp` | `pom.xml`, Maven standard layout, JUnit 5 test |
+| `typescript` | `project-init typescript myapp` | `package.json`, `tsconfig.json`, `src/`, `test/`, installs npm deps |
+| `go` | `project-init go github.com/user/myapp` | `go.mod` (or `go mod init`), `cmd/<name>/main.go` |
+| `cpp` | `project-init cpp myapp` | `CMakeLists.txt`, `src/main.cpp`, `tests/test_main.cpp` |
+| `rust` | `project-init rust myapp` | `cargo init` (or bare `Cargo.toml` + `src/main.rs`) |
+
+From inside a tmux session, `Ctrl-a P` prompts for `language:name` and runs
+`project-init` directly (e.g. type `python:myapp` at the prompt).
+
+## Shell environment
+
+`.zshrc` sets up the following tools automatically if they are installed:
+
+| Tool / alias | What it does |
+|--------------|-------------|
+| `vim`, `vi` | Redirected to `nvim` |
+| `lg` | `lazygit` shortcut |
+| `cat` | `bat --paging=never` (syntax-highlighted output) |
+| `ls` | Colorized (`ls -G`) |
+| `ll` | `ls -la` |
+| `..` / `...` | Jump up one / two directories |
+| `z <dir>` | Smart directory jump via `zoxide` |
+| `fzf` | Shell integration: `Ctrl-R` history search, `Ctrl-T` file picker, `Alt-C` directory jump |
+| `direnv` | Per-directory `.envrc` environment variable loading |
+| `starship` | Prompt |
+
+History is stored at `$XDG_STATE_HOME/zsh/history` with 100 000 lines, shared
+across sessions, and deduplicated.
+
+PATH additions (in order): `~/Development/dotfiles/bin`, `~/.local/bin`,
+`~/.local/share/ide-tools/bin`, Go bin (`~/.local/share/go/bin`), Cargo bin
+(`~/.local/share/cargo/bin`).
+
+## Terminal (Ghostty)
+
+`config/ghostty/config` sets:
+
+- **Font**: JetBrainsMono Nerd Font, size 13
+- **Theme**: `tokyonight`
+- **Scrollback**: 100 000 lines
+- **Mouse**: hidden while typing
+- **macOS titlebar**: tabs style
+- **`Cmd+D`**: split right
+- **`Cmd+Shift+D`**: split down
 
 ## Philosophy
 
